@@ -1,0 +1,106 @@
+import { describe, expect, it } from 'vitest';
+import type { BaseSpec, ComparisonResult, Subject } from '../src/comparison';
+import { describeHeader, type ComparisonSetup } from '../src/views/changesHeader';
+import { repo } from './helpers';
+
+const wt = (includeUncommitted: boolean): Subject => ({ kind: 'worktree', root: '/wt', label: 'feature-x', includeUncommitted });
+
+function result(subject: Subject, overrides: Partial<ComparisonResult> = {}): ComparisonResult {
+  return { repo: repo('svc'), subject, outcome: 'compared', mode: 'merge-base', baseLabel: 'origin/master', excludedUncommitted: {}, files: [], ...overrides };
+}
+
+function header(subject: Subject, base: BaseSpec, overrides: Partial<ComparisonResult> = {}, mode: 'merge-base' | 'direct' = 'merge-base') {
+  const setup: ComparisonSetup = { requests: [{ repo: repo('svc'), subject }], base, mode };
+  const [subjectRow, baseRow, modeRow] = describeHeader(setup, [result(subject, overrides)]);
+  return { subjectRow, baseRow, modeRow };
+}
+
+describe('subject row', () => {
+  it('says INCLUDING uncommitted edits and toggles on click', () => {
+    const { subjectRow } = header(wt(true), { kind: 'default' });
+    expect(subjectRow).toMatchObject({
+      label: 'Comparing: feature-x',
+      description: 'worktree · INCLUDING uncommitted edits',
+      warning: false,
+      command: 'branchCompare.toggleUncommitted',
+    });
+  });
+
+  it('warns with a count when committed only and edits exist', () => {
+    const { subjectRow } = header(wt(false), { kind: 'default' }, { excludedUncommitted: { subject: 3 } });
+    expect(subjectRow).toMatchObject({ description: 'worktree · committed only · 3 uncommitted files NOT included', warning: true, icon: 'warning' });
+  });
+
+  it('does not warn when committed only and nothing is uncommitted', () => {
+    const { subjectRow } = header(wt(false), { kind: 'default' }, { excludedUncommitted: { subject: 0 } });
+    expect(subjectRow).toMatchObject({ description: 'worktree · committed only', warning: false });
+  });
+
+  it('a branch has nothing to toggle', () => {
+    const { subjectRow } = header({ kind: 'ref', ref: 'feat', label: 'feat' }, { kind: 'default' });
+    expect(subjectRow).toMatchObject({ description: 'branch · committed work' });
+    expect(subjectRow?.command).toBeUndefined();
+  });
+
+  it('sums excluded files across repos and says how many repos', () => {
+    const setup: ComparisonSetup = {
+      requests: [
+        { repo: repo('a'), subject: wt(false) },
+        { repo: repo('b'), subject: wt(false) },
+      ],
+      base: { kind: 'default' },
+      mode: 'merge-base',
+    };
+    const [subjectRow] = describeHeader(setup, [
+      result(wt(false), { excludedUncommitted: { subject: 1 } }),
+      result(wt(false), { excludedUncommitted: { subject: 2 } }),
+    ]);
+    expect(subjectRow).toMatchObject({ label: 'Comparing: 2 repos (main worktrees)', description: 'committed only · 3 uncommitted files NOT included' });
+  });
+});
+
+describe('base row', () => {
+  it('shows the resolved default branch and is clickable', () => {
+    expect(header(wt(true), { kind: 'default' }).baseRow).toMatchObject({
+      label: 'With: origin/master',
+      description: 'default branch · click to change',
+      command: 'branchCompare.changeBase',
+    });
+  });
+
+  it('a committed-only worktree base warns about its excluded edits (singular)', () => {
+    const { baseRow } = header(wt(true), { kind: 'worktree', root: '/o', label: 'other', includeUncommitted: false }, { excludedUncommitted: { base: 1 } });
+    expect(baseRow).toMatchObject({ label: 'With: other', description: 'worktree · committed only · 1 uncommitted file NOT included · click to change', warning: true });
+  });
+
+  it('a worktree base including edits says so', () => {
+    const { baseRow } = header(wt(true), { kind: 'worktree', root: '/o', label: 'other', includeUncommitted: true });
+    expect(baseRow?.description).toBe('worktree · INCLUDING its uncommitted edits · click to change');
+  });
+});
+
+describe('mode row', () => {
+  it('describes both modes and toggles', () => {
+    expect(header(wt(true), { kind: 'default' }, {}, 'merge-base').modeRow).toMatchObject({ label: 'Showing: changes since branch point', command: 'branchCompare.toggleMode' });
+    expect(header(wt(true), { kind: 'default' }, {}, 'direct').modeRow).toMatchObject({ label: 'Showing: all differences' });
+  });
+
+  it('explains why direct is forced for a base with uncommitted edits', () => {
+    const { modeRow } = header(wt(true), { kind: 'worktree', root: '/o', label: 'o', includeUncommitted: true }, {}, 'merge-base');
+    expect(modeRow).toMatchObject({ label: 'Showing: all differences', description: 'required: the base includes uncommitted edits' });
+  });
+});
+
+describe('stale fetch warning on the base row', () => {
+  const setup: ComparisonSetup = { requests: [{ repo: repo('svc'), subject: wt(true) }], base: { kind: 'default' }, mode: 'merge-base' };
+
+  it('flags a remote base fetched too long ago', () => {
+    const [, baseRow] = describeHeader(setup, [result(wt(true))], { age: '3 days ago', stale: true });
+    expect(baseRow).toMatchObject({ description: 'default branch · fetched 3 days ago, may be out of date', warning: true, icon: 'warning' });
+  });
+
+  it('leaves the row alone when the fetch is recent or the base is local', () => {
+    const plain = describeHeader(setup, [result(wt(true))])[1];
+    expect(describeHeader(setup, [result(wt(true))], { age: '5 min ago', stale: false })[1]).toEqual(plain);
+  });
+});

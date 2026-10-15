@@ -1,0 +1,438 @@
+{
+  "name": "branch-compare",
+  "displayName": "Git Branch & Worktree Compare",
+  "description": "Compare git worktrees and branches with main (or any branch) and review the changed files side by side. Works with a single repository or many repositories in one window.",
+  "version": "0.4.0",
+  "publisher": "local",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "worktree",
+    "branch",
+    "diff",
+    "compare",
+    "multi-root"
+  ],
+  "main": "./dist/extension.js",
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "branchCompare",
+          "title": "Git Branch & Worktree Compare",
+          "icon": "media/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "branchCompare": [
+        {
+          "id": "branchCompare.repositories",
+          "name": "Repositories"
+        },
+        {
+          "id": "branchCompare.changes",
+          "name": "Changes"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "branchCompare.changes",
+        "contents": "Nothing compared yet.\n\nIn Repositories, click $(git-compare) next to a worktree or branch to compare it with the default branch (or the comparison base you set). Right-click for Compare With\u2026 and Set as Comparison Base.\n\n[Compare All Repos With Default Branch](command:branchCompare.compareAll)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "branchCompare.refresh",
+        "title": "Refresh",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "branchCompare.compareAll",
+        "title": "Compare All Repos With Default Branch",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "branchCompare.compare",
+        "title": "Compare With Base (default branch unless set)",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "branchCompare.compareWith",
+        "title": "Compare With\u2026",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.setBase",
+        "title": "Set as Comparison Base",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(target)"
+      },
+      {
+        "command": "branchCompare.clearBase",
+        "title": "Clear Comparison Base (use default branch)",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(close)"
+      },
+      {
+        "command": "branchCompare.openWorktree",
+        "title": "Open Worktree in New Window",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(empty-window)"
+      },
+      {
+        "command": "branchCompare.openChange",
+        "title": "Open Change",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.openAllChanges",
+        "title": "Open All Changes",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "branchCompare.rerun",
+        "title": "Refresh Comparison",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "branchCompare.changeBase",
+        "title": "Change What It Is Compared With\u2026",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "branchCompare.toggleUncommitted",
+        "title": "Include / Exclude Uncommitted Edits",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "branchCompare.toggleMode",
+        "title": "Switch: Since Branch Point / All Differences",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "branchCompare.clear",
+        "title": "Clear Comparison",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "branchCompare.fetch",
+        "title": "Fetch",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "branchCompare.fetchAll",
+        "title": "Fetch All Repos",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "branchCompare.fetchAndRerun",
+        "title": "Fetch and Refresh Comparison",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "branchCompare.createWorktree",
+        "title": "Create Worktree\u2026",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "branchCompare.removeWorktree",
+        "title": "Remove Worktree\u2026",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "branchCompare.createBranch",
+        "title": "Create Branch From Here\u2026",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(git-branch-create)"
+      },
+      {
+        "command": "branchCompare.deleteBranch",
+        "title": "Delete Branch\u2026",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "branchCompare.switchBranch",
+        "title": "Switch Main Worktree to This Branch",
+        "category": "Branch & Worktree Compare"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "branchCompare.compareAll",
+          "when": "view == branchCompare.repositories",
+          "group": "navigation@1"
+        },
+        {
+          "command": "branchCompare.fetchAll",
+          "when": "view == branchCompare.repositories",
+          "group": "navigation@1"
+        },
+        {
+          "command": "branchCompare.refresh",
+          "when": "view == branchCompare.repositories",
+          "group": "navigation@2"
+        },
+        {
+          "command": "branchCompare.openAllChanges",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "group": "navigation@1"
+        },
+        {
+          "command": "branchCompare.rerun",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "group": "navigation@2"
+        },
+        {
+          "command": "branchCompare.clear",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "group": "navigation@3"
+        },
+        {
+          "command": "branchCompare.changeBase",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "group": "1_setup@1"
+        },
+        {
+          "command": "branchCompare.toggleUncommitted",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "group": "1_setup@2"
+        },
+        {
+          "command": "branchCompare.toggleMode",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "group": "1_setup@3"
+        },
+        {
+          "command": "branchCompare.fetchAndRerun",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "branchCompare.compare",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable/",
+          "group": "inline@1"
+        },
+        {
+          "command": "branchCompare.openWorktree",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.worktree(\\.base)?$/",
+          "group": "inline@2"
+        },
+        {
+          "command": "branchCompare.compare",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable/",
+          "group": "1_compare@1"
+        },
+        {
+          "command": "branchCompare.compareWith",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable/",
+          "group": "1_compare@2"
+        },
+        {
+          "command": "branchCompare.setBase",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.(worktree|branch)/ && viewItem =~ /^(?!.*\\.base$)/",
+          "group": "2_base@1"
+        },
+        {
+          "command": "branchCompare.clearBase",
+          "when": "view == branchCompare.repositories && viewItem =~ /\\.(base|hasBase)$/",
+          "group": "2_base@2"
+        },
+        {
+          "command": "branchCompare.openWorktree",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.worktree(\\.base)?$/",
+          "group": "3_open@1"
+        },
+        {
+          "command": "branchCompare.fetch",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.repo/",
+          "group": "4_git@1"
+        },
+        {
+          "command": "branchCompare.createBranch",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable/",
+          "group": "4_git@2"
+        },
+        {
+          "command": "branchCompare.createWorktree",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.branch\\.(remote|local(?!\\.checkedOut))/",
+          "group": "4_git@3"
+        },
+        {
+          "command": "branchCompare.switchBranch",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.branch\\.(remote|local(?!\\.checkedOut))/",
+          "group": "4_git@4"
+        },
+        {
+          "command": "branchCompare.removeWorktree",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.worktree(\\.base)?$/",
+          "group": "5_danger@1"
+        },
+        {
+          "command": "branchCompare.deleteBranch",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.branch\\.local(?!\\.checkedOut)/",
+          "group": "5_danger@2"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "branchCompare.compareAll",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "branchCompare.compare",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.compareWith",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.setBase",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.clearBase",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.openWorktree",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.openChange",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.openAllChanges",
+          "when": "branchCompare.hasComparison"
+        },
+        {
+          "command": "branchCompare.rerun",
+          "when": "branchCompare.hasComparison"
+        },
+        {
+          "command": "branchCompare.clear",
+          "when": "branchCompare.hasComparison"
+        },
+        {
+          "command": "branchCompare.changeBase",
+          "when": "branchCompare.hasComparison"
+        },
+        {
+          "command": "branchCompare.toggleUncommitted",
+          "when": "branchCompare.hasComparison"
+        },
+        {
+          "command": "branchCompare.toggleMode",
+          "when": "branchCompare.hasComparison"
+        },
+        {
+          "command": "branchCompare.fetch",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.createWorktree",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.removeWorktree",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.createBranch",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.deleteBranch",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.switchBranch",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.fetchAndRerun",
+          "when": "branchCompare.hasComparison"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Git Branch & Worktree Compare",
+      "properties": {
+        "branchCompare.includeUntracked": {
+          "type": "boolean",
+          "default": true,
+          "description": "Treat untracked (never-added) files as uncommitted edits: shown as new files when uncommitted edits are included, and counted when they are not."
+        },
+        "branchCompare.includeUncommitted": {
+          "type": "boolean",
+          "default": true,
+          "description": "When comparing a worktree, include its uncommitted (staged, unstaged and, per `includeUntracked`, untracked) edits. Can be toggled per comparison from the Changes header."
+        },
+        "branchCompare.compareMode": {
+          "type": "string",
+          "enum": [
+            "sinceBranchPoint",
+            "allDifferences"
+          ],
+          "enumDescriptions": [
+            "Like a pull request: compare with where the branch split off, so later commits on the base are not shown.",
+            "Every difference between the two sides."
+          ],
+          "default": "sinceBranchPoint",
+          "description": "Default comparison mode. Can be switched per comparison from the Changes header."
+        },
+        "branchCompare.staleFetchHours": {
+          "type": "number",
+          "default": 24,
+          "minimum": 1,
+          "description": "Flag a repo (and a comparison with one of its remote branches) as possibly out of date when it has not been fetched for this many hours."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository --skip-license --out branch-compare.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "~1.90.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}
