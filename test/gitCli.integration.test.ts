@@ -152,6 +152,16 @@ describe('GitCli against a real repository', () => {
     expect(result?.files.map((f) => f.path)).not.toContain('keep.txt');
     git(repoRoot, 'checkout', '--', 'keep.txt');
   });
+
+  it('reads commit dates for refs and worktree HEADs', async () => {
+    const cli = new GitCli('git', recordingLogger());
+    const refs = await cli.refs(repoRoot);
+    expect(refs.find((r) => r.name === 'feature')?.committedAt).toBeGreaterThan(Date.now() - 3_600_000);
+    const head = git(worktreeRoot, 'rev-parse', 'HEAD').trim();
+    const dates = await cli.commitDates(repoRoot, [head, head]);
+    expect([...dates.keys()]).toEqual([head]);
+    expect(await cli.commitDates(repoRoot, [])).toEqual(new Map());
+  });
 });
 
 function compare(subject: Subject, base: BaseSpec, mode: 'merge-base' | 'direct' = 'merge-base') {
@@ -163,4 +173,3 @@ function compare(subject: Subject, base: BaseSpec, mode: 'merge-base' | 'direct'
     { includeUntracked: true, logger: recordingLogger() },
   );
 }
-

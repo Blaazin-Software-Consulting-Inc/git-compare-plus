@@ -20,6 +20,11 @@ orders-service     feature/login-retry
 └─ Remote Branches  31
 ```
 
+**Order:** in each group, the repo's default branch comes first, then `main`, then `master`.
+Everything else follows, newest commit first. The main worktree is always first under Worktrees.
+Each worktree and branch shows the age of its latest commit (`3 days ago`). **Compare With…**
+lists branches in the same order.
+
 - **$(git-compare) button** (hover over a repo, worktree or branch): compare it with the repo's
   **comparison base**. That's the repo's default branch (`origin/HEAD`, which is `master` or
   `main` depending on the repo) unless you've set something else.
@@ -159,7 +164,8 @@ Install or update it in each Cursor profile that should have it, then run **Deve
 | `src/gitActions.ts`             | Fetch, create/remove worktree, create/delete/switch branch, with their confirmation dialogs |
 | `src/operations.ts`             | Safety checks for those actions (counts of what would be lost), naming rules, fetch age |
 | `src/views/content.ts`          | `branch-compare:` documents (file content at a revision)             |
-| `src/branchCandidates.ts`       | Ordering of the Compare With… list                                   |
+| `src/treeOrder.ts`              | Order of worktrees and branches: default/main/master first, then newest |
+| `src/branchCandidates.ts`       | Order of branch names when comparing several repos at once          |
 | `src/logger.ts`                 | Structured logging to an output channel                              |
 
 ## Design notes

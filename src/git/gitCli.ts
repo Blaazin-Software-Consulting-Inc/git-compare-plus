@@ -26,6 +26,7 @@ import type { Logger } from '../logger';
 import {
   REF_LIST_FORMAT,
   countStatusEntries,
+  parseCommitDates,
   parseNameStatusZ,
   parseNulList,
   parseRefList,
@@ -70,6 +71,17 @@ export class GitCli implements ComparisonPort {
   /** Worktrees of the repository containing `cwd`; the first entry is the main worktree. */
   async worktrees(cwd: string): Promise<WorktreeEntry[]> {
     return parseWorktreeList(await this.run(cwd, ['worktree', 'list', '--porcelain']));
+  }
+
+  /**
+   * Committer dates (ms since epoch) of the given full SHAs, in one git call. Used to order
+   * worktrees by their latest commit. Unknown SHAs make git fail; callers pass worktree HEADs only.
+   */
+  async commitDates(cwd: string, shas: readonly string[]): Promise<Map<string, number>> {
+    if (shas.length === 0) {
+      return new Map();
+    }
+    return parseCommitDates(await this.run(cwd, ['show', '-s', '--format=%H %ct', ...shas]));
   }
 
   /** Local and remote-tracking branches, as ordered by git (alphabetical). */

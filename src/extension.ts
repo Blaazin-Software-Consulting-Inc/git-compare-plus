@@ -379,8 +379,9 @@ class CompareCommands {
     ]);
     const stored = this.bases.get(repo.commonDir);
     const otherWorktrees = worktrees.filter((w) => !(subject.kind === 'worktree' && w.path === subject.root));
-    const branches = rankBranchCandidates([refs.map((r) => ({ type: r.kind === 'local' ? RefType.Head : RefType.RemoteHead, name: r.name }))])
-      .filter((c) => !(subject.kind === 'ref' && c.ref === subject.ref));
+    // `refs` arrive in display order (treeOrder.ts: default branch, main/master, newest first),
+    // the same order as the Repositories view.
+    const branches = refs.filter((r) => !(subject.kind === 'ref' && r.name === subject.ref));
 
     const items: BasePickItem[] = [
       { label: '$(star-full) Default branch', description: defaultBranch ?? 'not found', base: { kind: 'default' } },
@@ -388,7 +389,11 @@ class CompareCommands {
       ...(otherWorktrees.length > 0 ? [{ label: 'Worktrees', kind: vscode.QuickPickItemKind.Separator }] : []),
       ...otherWorktrees.map((w) => ({ label: `$(folder) ${worktreeLabel(w)}`, description: w.path, worktree: w })),
       { label: 'Branches', kind: vscode.QuickPickItemKind.Separator },
-      ...branches.map((c) => ({ label: `$(git-branch) ${c.ref}`, base: { kind: 'ref' as const, ref: c.ref } })),
+      ...branches.map((r) => ({
+        label: `$(${r.kind === 'remote' ? 'cloud' : 'git-branch'}) ${r.name}`,
+        description: r.committedAt === undefined ? undefined : formatAge(r.committedAt, Date.now()),
+        base: { kind: 'ref' as const, ref: r.name },
+      })),
     ];
     const picked = await pickWithFreeText(items, `Compare ${subject.label} with…`);
     if (picked?.worktree !== undefined) {

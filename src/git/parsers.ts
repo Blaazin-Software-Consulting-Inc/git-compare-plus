@@ -45,10 +45,12 @@ export interface RefEntry {
   readonly upstream?: string;
   /** True for the branch checked out in the worktree that ran the command. */
   readonly isHead: boolean;
+  /** Committer date of the branch tip, ms since epoch; used to order branches newest first. */
+  readonly committedAt?: number;
 }
 
 /** `--format` for `git for-each-ref` matching `parseRefList`. `%00` makes git emit NUL separators. */
-export const REF_LIST_FORMAT = '%(refname)%00%(refname:short)%00%(objectname:short)%00%(upstream:short)%00%(HEAD)';
+export const REF_LIST_FORMAT = '%(refname)%00%(refname:short)%00%(objectname:short)%00%(upstream:short)%00%(HEAD)%00%(committerdate:unix)';
 
 /**
  * Parse `git diff --name-status -z [-M]`.
@@ -176,7 +178,7 @@ export function parseWorktreeList(stdout: string): WorktreeEntry[] {
 export function parseRefList(stdout: string): RefEntry[] {
   const refs: RefEntry[] = [];
   for (const line of stdout.split('\n')) {
-    const [fullName, name, sha, upstream, headMark] = line.split('\0');
+    const [fullName, name, sha, upstream, headMark, committedUnix] = line.split('\0');
     if (!fullName || !name || fullName.endsWith('/HEAD')) {
       continue;
     }
@@ -190,7 +192,29 @@ export function parseRefList(stdout: string): RefEntry[] {
       sha: sha ?? '',
       upstream: upstream ? upstream : undefined,
       isHead: headMark === '*',
+      committedAt: unixSecondsToMs(committedUnix),
     });
   }
   return refs;
+}
+
+/**
+ * Parse `git show -s --format='%H %ct' <sha>...` into SHA → committer date (ms since epoch).
+ * git prints each distinct commit once, so several worktrees on the same commit share an entry.
+ */
+export function parseCommitDates(stdout: string): Map<string, number> {
+  const dates = new Map<string, number>();
+  for (const line of stdout.split('\n')) {
+    const [sha, seconds] = line.trim().split(' ');
+    const ms = unixSecondsToMs(seconds);
+    if (sha && ms !== undefined) {
+      dates.set(sha, ms);
+    }
+  }
+  return dates;
+}
+
+function unixSecondsToMs(value: string | undefined): number | undefined {
+  const seconds = value === undefined ? Number.NaN : Number.parseInt(value, 10);
+  return Number.isFinite(seconds) ? seconds * 1000 : undefined;
 }

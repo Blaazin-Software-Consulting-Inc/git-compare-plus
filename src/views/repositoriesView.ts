@@ -17,6 +17,9 @@
  * `.checkedOut` = checked out in some worktree; such a branch cannot be deleted, switched to, or
  * given a second worktree (git refuses), so those menu entries are hidden for it.
  *
+ * Order (treeOrder.ts): default branch, then main/master, then newest commit first; the main
+ * worktree is always first. Each worktree/branch shows the age of its latest commit.
+ *
  * The repo row also shows when it was last fetched; comparisons against `origin/…` are only as
  * current as that fetch.
  *
@@ -27,6 +30,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { baseLabel, baseMatches } from '../baseStore';
 import { formatAge, isFetchStale } from '../operations';
+import { sortBranches, sortWorktrees } from '../treeOrder';
 import type { BaseSpec, RepoInfo, Subject } from '../comparison';
 import type { GitCli } from '../git/gitCli';
 import type { RefEntry, WorktreeEntry } from '../git/parsers';
@@ -38,6 +42,8 @@ interface RepoDetails {
   readonly refs: readonly RefEntry[];
   /** mtime of FETCH_HEAD in ms; undefined = never fetched. */
   readonly lastFetchedAt?: number;
+  /** Worktree HEAD SHA → committer date (ms); shown as the worktree's age. */
+  readonly worktreeDates: ReadonlyMap<string, number>;
 }
 
 type GroupKind = 'worktrees' | 'branches' | 'remotes';
@@ -144,7 +150,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
       case 'group':
         return this.groupItem(node.repo, node.group);
       case 'worktree':
-        return worktreeItem(node.repo, node.worktree, node.isMain, this.deps.getBase(node.repo));
+        return worktreeItem(node.repo, node.worktree, node.isMain, this.deps.getBase(node.repo), await this.worktreeDate(node.repo, node.worktree));
       case 'branch':
         return branchItem(node.repo, node.ref, node.checkedOutIn, this.deps.getBase(node.repo));
       case 'message': {
@@ -153,6 +159,10 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
         return item;
       }
     }
+  }
+
+  private async worktreeDate(repo: RepoInfo, worktree: WorktreeEntry): Promise<number | undefined> {
+    return worktree.head === undefined ? undefined : (await this.getDetails(repo)).worktreeDates.get(worktree.head);
   }
 
   private getDetails(repo: RepoInfo): Promise<RepoDetails> {
@@ -166,17 +176,47 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     return pending;
   }
 
+  // Sorted once here (treeOrder.ts) so the tree, the Compare With… picker and the delete
+  // dialogs all list worktrees and branches in the same order.
   private async loadDetails(repo: RepoInfo): Promise<RepoDetails> {
     const git = await this.deps.getGit();
-    const [worktrees, refs, lastFetchedAt] = await Promise.all([git.worktrees(repo.root), git.refs(repo.root), git.lastFetchedAt(repo.root)]);
+    const [worktrees, refs, lastFetchedAt, defaultBranch] = await Promise.all([
+      git.worktrees(repo.root),
+      git.refs(repo.root),
+      git.lastFetchedAt(repo.root),
+      git.defaultBranch(repo.root),
+    ]);
+    const commitDates = await this.worktreeCommitDates(git, repo, worktrees);
     this.deps.logger.debug('repository details loaded', {
       function: 'loadDetails',
       repo: repo.name,
       worktreeCount: worktrees.length,
       refCount: refs.length,
       lastFetchedAt,
+      defaultBranch,
     });
-    return { worktrees, refs, lastFetchedAt };
+    return {
+      worktrees: sortWorktrees(worktrees, defaultBranch, commitDates),
+      refs: sortBranches(refs, defaultBranch),
+      lastFetchedAt,
+      worktreeDates: commitDates,
+    };
+  }
+
+  private async worktreeCommitDates(git: GitCli, repo: RepoInfo, worktrees: readonly WorktreeEntry[]): Promise<Map<string, number>> {
+    const heads = worktrees.flatMap((w) => (w.head !== undefined && !w.bare && !w.prunable ? [w.head] : []));
+    try {
+      return await git.commitDates(repo.root, heads);
+    } catch (error) {
+      // Ordering is cosmetic: fall back to name order rather than failing the whole repo.
+      this.deps.logger.warn('worktree commit dates unavailable; ordering by name', {
+        function: 'worktreeCommitDates',
+        repo: repo.name,
+        heads,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return new Map();
+    }
   }
 
   private async groupNodes(repo: RepoInfo): Promise<RepoTreeNode[]> {
@@ -188,9 +228,12 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     const details = await this.getDetails(repo);
     if (group === 'worktrees') {
       // Stale entries (directory deleted without `git worktree remove`) cannot be diffed.
+      // Main = git's first entry (kept first by sortWorktrees), compared by path so filtering a
+      // bare main entry cannot promote a linked worktree to "main".
+      const mainPath = details.worktrees[0]?.path;
       return details.worktrees
         .filter((w) => !w.bare && !w.prunable)
-        .map((worktree, index) => ({ kind: 'worktree', repo, worktree, isMain: index === 0 }));
+        .map((worktree) => ({ kind: 'worktree', repo, worktree, isMain: worktree.path === mainPath }));
     }
     const kind = group === 'branches' ? 'local' : 'remote';
     // Branch → worktree path holding it; the main worktree's branch is included.
@@ -242,14 +285,22 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   }
 }
 
-function worktreeItem(repo: RepoInfo, worktree: WorktreeEntry, isMain: boolean, base: BaseSpec | undefined): vscode.TreeItem {
+function worktreeItem(
+  repo: RepoInfo,
+  worktree: WorktreeEntry,
+  isMain: boolean,
+  base: BaseSpec | undefined,
+  committedAt: number | undefined,
+): vscode.TreeItem {
   const label = worktree.branch ?? `detached @ ${(worktree.head ?? '').slice(0, 7)}`;
   const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
   const isBase = baseMatches(base, { worktreeRoot: worktree.path });
   item.id = `worktree:${worktree.path}`;
   item.iconPath = new vscode.ThemeIcon(isBase ? 'target' : isMain ? 'home' : 'folder');
   const location = isMain ? 'main worktree' : displayPath(repo.root, worktree.path);
-  item.description = isBase && base !== undefined ? `comparison base · ${location}` : location;
+  // Age of the latest commit, so the newest-first order is visible.
+  const age = committedAt === undefined ? undefined : formatAge(committedAt, Date.now());
+  item.description = [isBase ? 'comparison base' : undefined, location, age].filter(Boolean).join(' · ');
   item.tooltip = worktree.path;
   item.contextValue = `comparable.worktree${isMain ? '.main' : ''}${isBase ? '.base' : ''}`;
   return item;
@@ -262,7 +313,8 @@ function branchItem(repo: RepoInfo, ref: RefEntry, checkedOutIn: string | undefi
   item.iconPath = new vscode.ThemeIcon(isBase ? 'target' : ref.kind === 'remote' ? 'cloud' : checkedOutIn !== undefined ? 'check' : 'git-branch');
   const checkedOut = checkedOutIn !== undefined ? `in ${checkedOutIn === repo.root ? 'main worktree' : path.basename(checkedOutIn)}` : undefined;
   const detail = checkedOut ?? (ref.upstream !== undefined ? `→ ${ref.upstream}` : undefined);
-  item.description = isBase ? ['comparison base', detail].filter(Boolean).join(' · ') : detail;
+  const age = ref.committedAt === undefined ? undefined : formatAge(ref.committedAt, Date.now());
+  item.description = [isBase ? 'comparison base' : undefined, detail, age].filter(Boolean).join(' · ');
   item.tooltip = `${ref.name} @ ${ref.sha}${checkedOutIn !== undefined ? `\nchecked out in ${checkedOutIn}` : ''}`;
   item.contextValue = `comparable.branch.${ref.kind}${checkedOutIn !== undefined ? '.checkedOut' : ''}${isBase ? '.base' : ''}`;
   return item;

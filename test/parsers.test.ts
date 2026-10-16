@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countStatusEntries, parseNameStatusZ, parseNulList, parseRefList, parseWorktreeList } from '../src/git/parsers';
+import { countStatusEntries, parseCommitDates, parseNameStatusZ, parseNulList, parseRefList, parseWorktreeList } from '../src/git/parsers';
 
 describe('parseNameStatusZ', () => {
   it('parses each status, including rename and copy pairs', () => {
@@ -101,5 +101,25 @@ describe('countStatusEntries', () => {
 
   it('is zero for a clean worktree', () => {
     expect(countStatusEntries('')).toBe(0);
+  });
+});
+
+describe('commit dates', () => {
+  it('parseRefList reads the committer date (seconds → ms)', () => {
+    const line = ['refs/heads/feat', 'feat', 'abc', '', ' ', '1791819983'].join('\0');
+    expect(parseRefList(line)[0]?.committedAt).toBe(1_791_819_983_000);
+  });
+
+  it('parseRefList leaves the date undefined when missing or malformed', () => {
+    expect(parseRefList(['refs/heads/x', 'x', 'a', '', ' ', 'nope'].join('\0'))[0]?.committedAt).toBeUndefined();
+  });
+
+  it('parseCommitDates maps SHA → ms and skips junk lines', () => {
+    expect(parseCommitDates('aaa 100\nbbb 200\n\ngarbage\n')).toEqual(
+      new Map([
+        ['aaa', 100_000],
+        ['bbb', 200_000],
+      ]),
+    );
   });
 });
