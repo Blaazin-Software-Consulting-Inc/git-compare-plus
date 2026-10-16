@@ -5,6 +5,9 @@
  * Scope is deliberately small: actions taken WHILE reviewing. Commit, push, pull, merge, rebase
  * and stash stay in Cursor's Source Control view.
  *
+ * Delete Branch and Remove Worktree accept a multi-selection (and the Delete key): one dialog
+ * covers every selected item.
+ *
  * Every destructive action follows inspect → confirm → act:
  *   - the inspect step is in operations.ts (counts of what would be lost, blocking conditions);
  *   - the confirmation is a modal dialog naming exactly what is lost ("4 uncommitted files");
@@ -27,7 +30,13 @@ import {
   defaultWorktreePath,
   localNameForRemote,
   mapWithConcurrency,
+  planBranchDeletions,
+  planWorktreeRemovals,
   switchBlockers,
+  type BranchCandidate,
+  type ConfirmationText,
+  type SkippedItem,
+  type WorktreeCandidate,
 } from './operations';
 import type { ChangesProvider } from './views/changesView';
 import type { RepositoriesProvider, RepoTreeNode } from './views/repositoriesView';
@@ -149,39 +158,57 @@ export class GitActions {
     }
   }
 
-  /** Remove a linked worktree, confirming exactly what would be lost. */
-  async removeWorktree(node: RepoTreeNode | undefined): Promise<void> {
-    if (node?.kind !== 'worktree' || node.isMain) {
+  /**
+   * Remove one or more linked worktrees (multi-select) with ONE confirmation listing what each
+   * would lose. Main worktrees in the selection are skipped and listed. Removals run sequentially:
+   * they share the repo's administrative files, and git serialises on them anyway.
+   */
+  async removeWorktrees(nodes: readonly RepoTreeNode[]): Promise<void> {
+    const worktreeNodes = nodes.filter((n): n is Extract<RepoTreeNode, { kind: 'worktree' }> => n.kind === 'worktree');
+    if (worktreeNodes.length === 0) {
       return;
     }
-    const { repo, worktree } = node;
     const git = await this.deps.getGit();
-    const check = await checkWorktreeRemoval(git, worktree.path);
-    const name = worktree.branch ?? path.basename(worktree.path);
-
-    const lines = [
-      `Deletes the folder ${worktree.path}.`,
-      worktree.branch !== undefined ? `The branch ${worktree.branch} and its commits are kept.` : 'The worktree is detached; commits not on any branch become unreachable.',
-      ...(check.uncommittedFiles > 0 ? [`${check.uncommittedFiles} uncommitted file${check.uncommittedFiles === 1 ? '' : 's'} will be PERMANENTLY DELETED.`] : []),
-      ...(check.isClaudeWorktree ? ['This worktree was created by Claude Code. If a Claude session is still using it, that session will break.'] : []),
-    ];
-    const confirm = check.uncommittedFiles > 0 ? `Remove and Discard ${check.uncommittedFiles} File${check.uncommittedFiles === 1 ? '' : 's'}` : 'Remove Worktree';
-    const answer = await vscode.window.showWarningMessage(`Remove worktree ${name}?`, { modal: true, detail: lines.join('\n') }, confirm);
-    if (answer !== confirm) {
+    const removable = worktreeNodes.filter((n) => !n.isMain);
+    const skipped: SkippedItem[] = worktreeNodes
+      .filter((n) => n.isMain)
+      .map((n) => ({ label: `${n.repo.name} (main worktree)`, reason: 'the main worktree cannot be removed' }));
+    const candidates: WorktreeCandidate[] = await Promise.all(
+      removable.map(async (n) => ({
+        repoName: n.repo.name,
+        name: n.worktree.branch ?? path.basename(n.worktree.path),
+        path: n.worktree.path,
+        detached: n.worktree.branch === undefined,
+        check: await checkWorktreeRemoval(git, n.worktree.path),
+      })),
+    );
+    const confirmation = planWorktreeRemovals(candidates, skipped);
+    if (confirmation === undefined) {
+      void vscode.window.showInformationMessage(skipped.map((s) => `${s.label}: ${s.reason}`).join('\n'));
+      return;
+    }
+    if (!(await confirm(confirmation))) {
       return;
     }
 
-    // --force only when the user just confirmed losing exactly these files.
-    const force = check.uncommittedFiles > 0;
-    try {
-      await git.removeWorktree(repo.root, worktree.path, force);
-    } catch (error) {
-      this.deps.logger.error('worktree removal failed', error, { function: 'removeWorktree', repo: repo.name, path: worktree.path, force, check });
-      throw error;
+    const failures: string[] = [];
+    for (const [index, node] of removable.entries()) {
+      const candidate = candidates[index];
+      // --force only for worktrees whose uncommitted files the user just confirmed losing.
+      const force = (candidate?.check.uncommittedFiles ?? 0) > 0;
+      try {
+        await git.removeWorktree(node.repo.root, node.worktree.path, force);
+        this.deps.logger.info('worktree removed', { function: 'removeWorktrees', repo: node.repo.name, path: node.worktree.path, force, check: candidate?.check });
+        await this.forgetWorktree(node.repo, node.worktree.path);
+      } catch (error) {
+        // Logged here with the item's context; the loop continues so one locked worktree does
+        // not prevent removing the rest, and the user gets one summary of what failed.
+        this.deps.logger.error('worktree removal failed', error, { function: 'removeWorktrees', repo: node.repo.name, path: node.worktree.path, force, check: candidate?.check });
+        failures.push(`${candidate?.name ?? node.worktree.path}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-    this.deps.logger.info('worktree removed', { function: 'removeWorktree', repo: repo.name, path: worktree.path, force, check });
-    await this.forgetWorktree(repo, worktree.path);
-    this.deps.repositories.refreshRepo(repo);
+    this.refreshRepos(removable.map((n) => n.repo));
+    reportFailures('remove', 'worktree', removable.length, failures);
   }
 
   /** Create a branch starting at a branch, a worktree's HEAD, or the main worktree's HEAD. */
@@ -229,47 +256,77 @@ export class GitActions {
     }
   }
 
-  /** Delete a local branch after checking it is not checked out and confirming unmerged commits. */
-  async deleteBranch(node: RepoTreeNode | undefined): Promise<void> {
-    if (node?.kind !== 'branch' || node.ref.kind !== 'local') {
+  /**
+   * Delete one or more local branches (multi-select) with ONE confirmation listing the commits each
+   * would lose. Branches checked out in any worktree, and remote branches, are skipped and listed.
+   */
+  async deleteBranches(nodes: readonly RepoTreeNode[]): Promise<void> {
+    const branchNodes = nodes.filter((n): n is Extract<RepoTreeNode, { kind: 'branch' }> => n.kind === 'branch');
+    if (branchNodes.length === 0) {
       return;
     }
-    const { repo, ref } = node;
     const git = await this.deps.getGit();
-    const check = await checkBranchDeletion(git, repo.root, ref.name, await git.worktrees(repo.root));
+    const local = branchNodes.filter((n) => n.ref.kind === 'local');
+    const remoteSkipped: SkippedItem[] = branchNodes
+      .filter((n) => n.ref.kind === 'remote')
+      .map((n) => ({ label: n.ref.name, reason: 'remote branch (deleting on the remote is not supported here)' }));
 
-    if (check.kind === 'blocked') {
-      void vscode.window.showInformationMessage(`${ref.name} is checked out in ${check.checkedOutIn}. Remove that worktree or switch it to another branch first.`);
+    // Worktree lists fetched once per repo, AFTER any worktree removals in the same action, so a
+    // branch freed by removing its worktree is deletable.
+    const worktreesByRepo = new Map<string, Promise<WorktreeEntry[]>>();
+    const worktreesOf = (repo: RepoInfo): Promise<WorktreeEntry[]> => {
+      let pending = worktreesByRepo.get(repo.commonDir);
+      if (pending === undefined) {
+        pending = git.worktrees(repo.root);
+        worktreesByRepo.set(repo.commonDir, pending);
+      }
+      return pending;
+    };
+    const candidates: (BranchCandidate & { node: (typeof local)[number] })[] = await Promise.all(
+      local.map(async (node) => ({
+        node,
+        repoName: node.repo.name,
+        branch: node.ref.name,
+        check: await checkBranchDeletion(git, node.repo.root, node.ref.name, await worktreesOf(node.repo)),
+      })),
+    );
+    const plan = planBranchDeletions(candidates, remoteSkipped);
+    if (plan.confirmation === undefined) {
+      void vscode.window.showInformationMessage(`Nothing to delete. ${plan.skipped.map((s) => `${s.label}: ${s.reason}`).join('; ')}`);
       return;
     }
-    let detail: string;
-    let confirm: string;
-    if (check.kind === 'unknown') {
-      detail = `Could not check for unmerged commits (${check.reason}). Commits only on this branch would be lost.`;
-      confirm = 'Delete Anyway';
-    } else if (check.unmergedCommits > 0) {
-      detail = `${check.unmergedCommits} commit${check.unmergedCommits === 1 ? ' is' : 's are'} not in ${check.comparedWith} and will be lost (recoverable from the reflog for a limited time).`;
-      confirm = `Delete and Lose ${check.unmergedCommits} Commit${check.unmergedCommits === 1 ? '' : 's'}`;
-    } else {
-      detail = `All of its commits are in ${check.comparedWith}. Remote branches are not affected.`;
-      confirm = 'Delete Branch';
-    }
-    const answer = await vscode.window.showWarningMessage(`Delete branch ${ref.name}?`, { modal: true, detail }, confirm);
-    if (answer !== confirm) {
+    if (!(await confirm(plan.confirmation))) {
       return;
     }
-    try {
-      await git.deleteBranch(repo.root, ref.name);
-    } catch (error) {
-      this.deps.logger.error('branch deletion failed', error, { function: 'deleteBranch', repo: repo.name, branch: ref.name, check });
-      throw error;
+
+    const deletable = new Set(plan.deletable);
+    const toDelete = candidates.filter((c) => deletable.has(c));
+    const failures: string[] = [];
+    for (const { node, check } of toDelete) {
+      try {
+        await git.deleteBranch(node.repo.root, node.ref.name);
+        this.deps.logger.info('branch deleted', { function: 'deleteBranches', repo: node.repo.name, branch: node.ref.name, sha: node.ref.sha, check });
+        const base = this.deps.bases.get(node.repo.commonDir);
+        if (base?.kind === 'ref' && base.ref === node.ref.name) {
+          await this.deps.bases.clear(node.repo.commonDir);
+        }
+      } catch (error) {
+        // Logged per branch with its context; continue so one failure does not block the rest.
+        this.deps.logger.error('branch deletion failed', error, { function: 'deleteBranches', repo: node.repo.name, branch: node.ref.name, check });
+        failures.push(`${node.ref.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-    this.deps.logger.info('branch deleted', { function: 'deleteBranch', repo: repo.name, branch: ref.name, sha: ref.sha, check });
-    const base = this.deps.bases.get(repo.commonDir);
-    if (base?.kind === 'ref' && base.ref === ref.name) {
-      await this.deps.bases.clear(repo.commonDir);
-    }
-    this.deps.repositories.refreshRepo(repo);
+    this.refreshRepos(toDelete.map((c) => c.node.repo));
+    reportFailures('delete', 'branch', toDelete.length, failures);
+  }
+
+  /**
+   * Delete key / "Delete Selected": remove selected worktrees first, then delete selected branches.
+   * That order lets one action remove a worktree and the branch it had checked out.
+   */
+  async deleteSelection(nodes: readonly RepoTreeNode[]): Promise<void> {
+    await this.removeWorktrees(nodes);
+    await this.deleteBranches(nodes);
   }
 
   /** Switch the MAIN worktree to a branch; refused while it has uncommitted tracked changes. */
@@ -304,6 +361,12 @@ export class GitActions {
     this.deps.repositories.refreshRepo(repo);
   }
 
+  private refreshRepos(repos: readonly RepoInfo[]): void {
+    for (const repo of new Map(repos.map((r) => [r.commonDir, r])).values()) {
+      this.deps.repositories.refreshRepo(repo);
+    }
+  }
+
   // A removed worktree must not linger as the saved comparison base or as the subject on display.
   private async forgetWorktree(repo: RepoInfo, worktreePath: string): Promise<void> {
     const base = this.deps.bases.get(repo.commonDir);
@@ -314,5 +377,20 @@ export class GitActions {
     if (shown?.setup.requests.some((r) => r.subject.kind === 'worktree' && r.subject.root === worktreePath)) {
       this.deps.changes.clear();
     }
+  }
+}
+
+/** Show a modal confirmation; true only when the user clicked the confirm button. */
+async function confirm(text: ConfirmationText): Promise<boolean> {
+  return (await vscode.window.showWarningMessage(text.title, { modal: true, detail: text.detail }, text.confirm)) === text.confirm;
+}
+
+/** One summary for a bulk action's failures (each already logged at ERROR with its context). */
+function reportFailures(verb: string, noun: string, attempted: number, failures: readonly string[]): void {
+  if (failures.length > 0) {
+    void vscode.window.showWarningMessage(`Could not ${verb} ${failures.length} of ${attempted} ${noun}${attempted === 1 ? '' : noun.endsWith('h') ? 'es' : 's'}`, {
+      modal: false,
+      detail: failures.join('\n'),
+    });
   }
 }

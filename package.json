@@ -2,7 +2,7 @@
   "name": "branch-compare",
   "displayName": "Git Branch & Worktree Compare",
   "description": "Compare git worktrees and branches with main (or any branch) and review the changed files side by side. Works with a single repository or many repositories in one window.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "local",
   "private": true,
   "license": "UNLICENSED",
@@ -161,7 +161,7 @@
       },
       {
         "command": "branchCompare.removeWorktree",
-        "title": "Remove Worktree\u2026",
+        "title": "Remove Worktree(s)\u2026",
         "category": "Branch & Worktree Compare",
         "icon": "$(trash)"
       },
@@ -173,13 +173,18 @@
       },
       {
         "command": "branchCompare.deleteBranch",
-        "title": "Delete Branch\u2026",
+        "title": "Delete Branch(es)\u2026",
         "category": "Branch & Worktree Compare",
         "icon": "$(trash)"
       },
       {
         "command": "branchCompare.switchBranch",
         "title": "Switch Main Worktree to This Branch",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.deleteSelected",
+        "title": "Delete Selected Branches / Remove Selected Worktrees\u2026",
         "category": "Branch & Worktree Compare"
       }
     ],
@@ -385,6 +390,10 @@
         {
           "command": "branchCompare.fetchAndRerun",
           "when": "branchCompare.hasComparison"
+        },
+        {
+          "command": "branchCompare.deleteSelected",
+          "when": "false"
         }
       ]
     },
@@ -421,7 +430,15 @@
           "description": "Flag a repo (and a comparison with one of its remote branches) as possibly out of date when it has not been fetched for this many hours."
         }
       }
-    }
+    },
+    "keybindings": [
+      {
+        "command": "branchCompare.deleteSelected",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == branchCompare.repositories && !inputFocus"
+      }
+    ]
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

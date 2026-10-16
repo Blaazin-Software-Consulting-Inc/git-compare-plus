@@ -7,6 +7,9 @@ import {
   isFetchStale,
   localNameForRemote,
   mapWithConcurrency,
+  planBranchDeletions,
+  planWorktreeRemovals,
+  selectionTargets,
   switchBlockers,
   type OperationsPort,
 } from '../src/operations';
@@ -112,5 +115,94 @@ describe('mapWithConcurrency', () => {
 
   it('handles an empty list', async () => {
     expect(await mapWithConcurrency([], 4, async () => 1)).toEqual([]);
+  });
+});
+
+describe('selectionTargets', () => {
+  it('uses the whole selection when the clicked item is part of it', () => {
+    expect(selectionTargets('b', ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+  });
+  it('uses only the clicked item when it is outside the selection', () => {
+    expect(selectionTargets('z', ['a', 'b'])).toEqual(['z']);
+  });
+  it('handles no selection, and the Delete key (no clicked item)', () => {
+    expect(selectionTargets('a', undefined)).toEqual(['a']);
+    expect(selectionTargets(undefined, ['a', 'b'])).toEqual(['a', 'b']);
+    expect(selectionTargets(undefined, [])).toEqual([]);
+  });
+});
+
+describe('planBranchDeletions', () => {
+  const ok = (repoName: string, branch: string, unmergedCommits: number) => ({
+    repoName,
+    branch,
+    check: { kind: 'ok' as const, comparedWith: 'origin/master', unmergedCommits },
+  });
+
+  it('single merged branch: plain wording', () => {
+    const { confirmation, deletable } = planBranchDeletions([ok('svc', 'feat', 0)]);
+    expect(deletable).toHaveLength(1);
+    expect(confirmation).toMatchObject({ title: 'Delete branch feat?', confirm: 'Delete Branch' });
+    expect(confirmation?.detail).toContain('• feat: all commits are in origin/master');
+  });
+
+  it('several branches: per-branch lines, total lost commits on the button, skipped listed', () => {
+    const plan = planBranchDeletions(
+      [ok('svc', 'a', 2), ok('svc', 'b', 0), ok('svc', 'c', 1), { repoName: 'svc', branch: 'master', check: { kind: 'blocked', checkedOutIn: '/ws/svc' } }],
+      [{ label: 'origin/x', reason: 'remote branch' }],
+    );
+    expect(plan.deletable.map((c) => c.branch)).toEqual(['a', 'b', 'c']);
+    expect(plan.confirmation).toMatchObject({ title: 'Delete 3 branches?', confirm: 'Delete and Lose 3 Commits' });
+    expect(plan.confirmation?.detail).toContain('• a: 2 commits not in origin/master will be lost');
+    expect(plan.confirmation?.detail).toContain('3 commits in total will be lost');
+    expect(plan.confirmation?.detail).toContain('• master: checked out in /ws/svc');
+    expect(plan.confirmation?.detail).toContain('• origin/x: remote branch');
+  });
+
+  it('prefixes repo names when the selection spans repos; unknown check → Delete Anyway', () => {
+    const plan = planBranchDeletions([ok('svc', 'a', 0), { repoName: 'lib', branch: 'b', check: { kind: 'unknown', reason: 'x' } }]);
+    expect(plan.confirmation?.detail).toContain('• svc: a:');
+    expect(plan.confirmation?.detail).toContain('• lib: b: could not check');
+    expect(plan.confirmation?.confirm).toBe('Delete Anyway');
+  });
+
+  it('no confirmation when everything is blocked', () => {
+    const plan = planBranchDeletions([{ repoName: 'svc', branch: 'master', check: { kind: 'blocked', checkedOutIn: '/ws/svc' } }]);
+    expect(plan.confirmation).toBeUndefined();
+    expect(plan.skipped).toEqual([{ label: 'master', reason: 'checked out in /ws/svc' }]);
+  });
+
+  it('truncates long lists', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ok('svc', `b${i}`, 0));
+    const detail = planBranchDeletions(many).confirmation?.detail ?? '';
+    expect(detail).toContain('…and 5 more');
+    expect(detail).not.toContain('• b19');
+  });
+});
+
+describe('planWorktreeRemovals', () => {
+  const cand = (name: string, files: number, claude = false) => ({
+    repoName: 'svc',
+    name,
+    path: `/ws/svc.worktrees/${name}`,
+    detached: false,
+    check: { uncommittedFiles: files, isClaudeWorktree: claude },
+  });
+
+  it('single clean worktree', () => {
+    expect(planWorktreeRemovals([cand('feat', 0)])).toMatchObject({ title: 'Remove worktree feat?', confirm: 'Remove Worktree' });
+  });
+
+  it('several: totals lost files on the button and flags Claude worktrees and skipped items', () => {
+    const text = planWorktreeRemovals([cand('a', 2), cand('b', 0), cand('c', 1, true)], [{ label: 'svc (main worktree)', reason: 'cannot be removed' }]);
+    expect(text).toMatchObject({ title: 'Remove 3 worktrees?', confirm: 'Remove and Discard 3 Files' });
+    expect(text?.detail).toContain('• a: /ws/svc.worktrees/a, 2 uncommitted files will be PERMANENTLY DELETED');
+    expect(text?.detail).toContain('3 uncommitted files in total will be permanently deleted.');
+    expect(text?.detail).toContain('Created by Claude Code');
+    expect(text?.detail).toContain('• svc (main worktree): cannot be removed');
+  });
+
+  it('nothing removable → undefined', () => {
+    expect(planWorktreeRemovals([])).toBeUndefined();
   });
 });

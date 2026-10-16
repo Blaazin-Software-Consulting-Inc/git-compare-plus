@@ -48,8 +48,15 @@ stay in Cursor's Source Control panel.
 | **Create Branch From Here…** | repo, worktree, branch | Doesn't switch to the new branch. Optionally creates a worktree for it right after. |
 | **Create Worktree…** | branch not checked out anywhere, or a remote branch | A remote branch gets a local branch with the same name that tracks it. The suggested folder is `<repo>.worktrees/<branch>` next to the repo. |
 | **Switch Main Worktree to This Branch** | branch not checked out anywhere, or a remote branch | Refused while the main worktree has uncommitted changes. Nothing is carried over or stashed for you. |
-| **Remove Worktree…** | linked worktree | Confirmation names the folder and how many uncommitted files would be **permanently deleted**. It also warns when the worktree was created by Claude Code. The branch is kept. |
-| **Delete Branch…** | local branch not checked out anywhere | Confirmation says how many commits aren't in the default branch and would be lost. |
+| **Remove Worktree(s)…** | one or more linked worktrees | Confirmation names each folder and how many uncommitted files would be **permanently deleted**, plus the total. It also warns when a worktree was created by Claude Code. Branches are kept. |
+| **Delete Branch(es)…** | one or more local branches not checked out anywhere | Confirmation lists how many commits each branch has that aren't in the default branch and would be lost, plus the total. |
+
+**Deleting several at once:** select multiple items with Cmd/Shift-click, even across repos.
+Then right-click, or press **Cmd+Backspace** (**Delete** on Windows/Linux). One confirmation
+covers the whole selection. Items that can't be deleted are listed as **Skipped** with the reason:
+a checked-out branch, a remote branch, or the main worktree. With the Delete key, a selection that
+mixes worktrees and branches removes the worktrees first. That way, a branch whose only
+checkout was one of those worktrees is deleted in the same pass.
 
 **Changes** starts with three header rows that say exactly what was compared. Click a row to
 change that part, and the comparison re-runs:

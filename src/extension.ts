@@ -33,7 +33,7 @@ import { GitActions } from './gitActions';
 import { GitCli } from './git/gitCli';
 import type { WorktreeEntry } from './git/parsers';
 import { createChannelLogger, type Logger } from './logger';
-import { formatAge, isFetchStale } from './operations';
+import { formatAge, isFetchStale, selectionTargets } from './operations';
 import { discoverRepos, getGitApi } from './repoDiscovery';
 import type { BaseFetchInfo, ComparisonSetup } from './views/changesHeader';
 import { ChangesProvider, type ChangesNode } from './views/changesView';
@@ -66,6 +66,12 @@ export function activate(context: vscode.ExtensionContext): void {
     staleFetchHours: () => settings().staleFetchHours,
     logger,
   });
+  // canSelectMany: Delete Branch / Remove Worktree act on the whole selection (one confirmation).
+  const repositoriesView = vscode.window.createTreeView('branchCompare.repositories', {
+    treeDataProvider: repositories,
+    showCollapseAll: true,
+    canSelectMany: true,
+  });
   const changes = new ChangesProvider();
   const changesView = vscode.window.createTreeView('branchCompare.changes', { treeDataProvider: changes, showCollapseAll: true });
   changes.attach(changesView);
@@ -83,7 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     channel,
     changesView,
-    vscode.window.createTreeView('branchCompare.repositories', { treeDataProvider: repositories, showCollapseAll: true }),
+    repositoriesView,
     vscode.window.registerFileDecorationProvider(changes),
     vscode.workspace.registerTextDocumentContentProvider(CONTENT_SCHEME, new RevisionContentProvider(getGit, logger)),
     vscode.workspace.onDidChangeWorkspaceFolders(() => repositories.refresh()),
@@ -105,9 +111,11 @@ export function activate(context: vscode.ExtensionContext): void {
     register('branchCompare.fetchAll', () => actions.fetchAll(), logger),
     register('branchCompare.fetchAndRerun', () => commands.fetchAndRerun(actions), logger),
     register('branchCompare.createWorktree', (node?: RepoTreeNode) => actions.createWorktree(node), logger),
-    register('branchCompare.removeWorktree', (node?: RepoTreeNode) => actions.removeWorktree(node), logger),
+    register('branchCompare.removeWorktree', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => actions.removeWorktrees(selectionTargets(node, selection)), logger),
     register('branchCompare.createBranch', (node?: RepoTreeNode) => actions.createBranch(node), logger),
-    register('branchCompare.deleteBranch', (node?: RepoTreeNode) => actions.deleteBranch(node), logger),
+    register('branchCompare.deleteBranch', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => actions.deleteBranches(selectionTargets(node, selection)), logger),
+    // Delete key: keybindings pass no arguments, so read the tree's own selection.
+    register('branchCompare.deleteSelected', () => actions.deleteSelection(repositoriesView.selection), logger),
     register('branchCompare.switchBranch', (node?: RepoTreeNode) => actions.switchBranch(node), logger),
   );
 }
