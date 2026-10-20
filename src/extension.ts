@@ -16,6 +16,9 @@
  */
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { ChangesAutoRefresh } from './autoRefresh/changesAutoRefresh';
+import { followGitChanges } from './autoRefresh/gitEvents';
+import { stableSignature } from './autoRefresh/scheduling';
 import { RefType, rankBranchCandidates } from './branchCandidates';
 import { BaseStore, baseLabel, baseMatches } from './baseStore';
 import {
@@ -34,7 +37,7 @@ import { GitCli } from './git/gitCli';
 import type { WorktreeEntry } from './git/parsers';
 import { createChannelLogger, type Logger } from './logger';
 import { formatAge, isFetchStale, selectionTargets } from './operations';
-import { discoverRepos, getGitApi } from './repoDiscovery';
+import { discoverRepos, getGitApi, type GitApi } from './repoDiscovery';
 import type { BaseFetchInfo, ComparisonSetup } from './views/changesHeader';
 import { ChangesProvider, type ChangesNode } from './views/changesView';
 import { CONTENT_SCHEME, RevisionContentProvider, sideToUri } from './views/content';
@@ -46,11 +49,11 @@ export function activate(context: vscode.ExtensionContext): void {
   const logger = createChannelLogger(channel, 'BranchCompare');
 
   // Memoized: the git extension activates asynchronously, and every view/command shares one GitCli.
-  let services: Promise<{ git: GitCli; discover: () => Promise<RepoInfo[]> }> | undefined;
+  let services: Promise<{ api: GitApi; git: GitCli; discover: () => Promise<RepoInfo[]> }> | undefined;
   const getServices = () => {
     services ??= getGitApi().then((api) => {
       const git = new GitCli(api.git.path, logger);
-      return { git, discover: () => discoverRepos(api, git, logger) };
+      return { api, git, discover: () => discoverRepos(api, git, logger) };
     });
     // A failed start (git disabled) should be retried on the next action, not cached forever.
     services.catch(() => (services = undefined));
@@ -116,8 +119,81 @@ export function activate(context: vscode.ExtensionContext): void {
     register('branchCompare.deleteBranch', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => actions.deleteBranches(selectionTargets(node, selection)), logger),
     // Delete key: keybindings pass no arguments, so read the tree's own selection.
     register('branchCompare.deleteSelected', () => actions.deleteSelection(repositoriesView.selection), logger),
+    ...startAutoRefresh(getServices, repositories, repositoriesView, changes, commands, logger),
     register('branchCompare.switchBranch', (node?: RepoTreeNode) => actions.switchBranch(node), logger),
   );
+}
+
+// Re-render relative ages ("3 h ago", fetch staleness) once a minute. Redraw only, no git commands.
+const AGE_REFRESH_MS = 60_000;
+
+/**
+ * Automatic refresh (see src/autoRefresh/):
+ *   - Repositories follows Cursor's git change events (always on; reloads redraw only on change).
+ *   - Changes re-runs on file/git changes while `branchCompare.autoRefresh` is on.
+ *   - Ages re-render every minute. Fetching is never automatic: it hits the network with your
+ *     credentials, so it stays a button.
+ * @returns disposables for the extension context.
+ */
+function startAutoRefresh(
+  getServices: () => Promise<{ api: GitApi; git: GitCli }>,
+  repositories: RepositoriesProvider,
+  repositoriesView: vscode.TreeView<RepoTreeNode>,
+  changes: ChangesProvider,
+  commands: CompareCommands,
+  logger: Logger,
+): vscode.Disposable[] {
+  const changesRefresh = new ChangesAutoRefresh(changes, () => commands.rerunQuietly(), () => settings().autoRefresh, logger);
+
+  let gitSubscription: vscode.Disposable | undefined;
+  let disposed = false;
+  getServices().then(
+    ({ api, git }) => {
+      // The extension may have been deactivated while the git extension was still starting.
+      if (disposed) {
+        return;
+      }
+      gitSubscription = followGitChanges(
+        api,
+        git,
+        {
+          repoChanged: (commonDir) => {
+            void repositories.refreshRepoIfChanged(commonDir);
+            changesRefresh.repoChanged(commonDir);
+          },
+          reposChanged: () => repositories.refresh(),
+        },
+        logger,
+      );
+    },
+    (error: unknown) =>
+      // Git unavailable (disabled/missing): views show their own error; nothing to follow.
+      logger.warn('automatic refresh not started: git extension unavailable', {
+        function: 'startAutoRefresh',
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+  );
+
+  const ageTimer = setInterval(() => {
+    if (repositoriesView.visible) {
+      repositories.redraw();
+    }
+    void commands.refreshAges();
+  }, AGE_REFRESH_MS);
+
+  return [
+    changesRefresh,
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('branchCompare.autoRefresh')) {
+        changesRefresh.settingChanged();
+      }
+    }),
+    new vscode.Disposable(() => {
+      disposed = true;
+      clearInterval(ageTimer);
+      gitSubscription?.dispose();
+    }),
+  ];
 }
 
 /** Nothing to clean up beyond `context.subscriptions`. */
@@ -139,9 +215,10 @@ function register<A extends unknown[]>(id: string, handler: (...args: A) => unkn
 }
 
 /** User settings read at the start of each comparison. */
-function settings(): { includeUntracked: boolean; includeUncommitted: boolean; mode: CompareMode; staleFetchHours: number } {
+function settings(): { includeUntracked: boolean; includeUncommitted: boolean; mode: CompareMode; staleFetchHours: number; autoRefresh: boolean } {
   const config = vscode.workspace.getConfiguration('branchCompare');
   return {
+    autoRefresh: config.get<boolean>('autoRefresh', true),
     staleFetchHours: config.get<number>('staleFetchHours', 24),
     includeUntracked: config.get<boolean>('includeUntracked', true),
     includeUncommitted: config.get<boolean>('includeUncommitted', true),
@@ -284,6 +361,43 @@ class CompareCommands {
     }
   }
 
+  /**
+   * Automatic rerun (file watchers / git events). Unlike `rerun` it does not focus the view, and it
+   * only redraws when the results differ. It is also discarded if the user started a different
+   * comparison while it ran, so a background run never overwrites a newer choice.
+   */
+  async rerunQuietly(): Promise<void> {
+    const state = this.changes.current();
+    if (state === undefined) {
+      return;
+    }
+    const results = await this.compute(state.setup);
+    if (this.changes.current() !== state) {
+      return;
+    }
+    const baseFetch = await this.baseFetchInfo(results);
+    if (stableSignature({ results, baseFetch }) === stableSignature({ results: state.results, baseFetch: state.baseFetch })) {
+      return;
+    }
+    this.logger.debug('comparison auto-refreshed', { function: 'rerunQuietly', fileCount: results.reduce((n, r) => n + r.files.length, 0) });
+    this.changes.show({ ...state, results, baseFetch });
+  }
+
+  /**
+   * Minute timer: re-evaluate the fetch age shown on the base row (e.g. crossing the stale
+   * threshold) from cached fetch times. Runs no git commands.
+   */
+  async refreshAges(): Promise<void> {
+    const state = this.changes.current();
+    if (state === undefined) {
+      return;
+    }
+    const baseFetch = await this.baseFetchInfo(state.results);
+    if (this.changes.current() === state && stableSignature(baseFetch) !== stableSignature(state.baseFetch)) {
+      this.changes.show({ ...state, baseFetch });
+    }
+  }
+
   /** Changes title bar: fetch the repos in the current comparison, then re-run it. */
   async fetchAndRerun(actions: GitActions): Promise<void> {
     const state = this.changes.current();
@@ -337,14 +451,17 @@ class CompareCommands {
   }
 
   private async run(setup: ComparisonSetup): Promise<void> {
-    const git = await this.getGit();
-    const { includeUntracked } = settings();
-    const results: ComparisonResult[] = await vscode.window.withProgress(
-      { location: { viewId: 'branchCompare.changes' }, title: 'Comparing…' },
-      () => runComparisons(git, setup.requests, setup.base, setup.mode, { includeUntracked, logger: this.logger }),
-    );
+    const results = await this.compute(setup);
     this.changes.show({ setup, results, baseFetch: await this.baseFetchInfo(results) });
     await vscode.commands.executeCommand('branchCompare.changes.focus');
+  }
+
+  private async compute(setup: ComparisonSetup): Promise<ComparisonResult[]> {
+    const git = await this.getGit();
+    const { includeUntracked } = settings();
+    return vscode.window.withProgress({ location: { viewId: 'branchCompare.changes' }, title: 'Comparing…' }, () =>
+      runComparisons(git, setup.requests, setup.base, setup.mode, { includeUntracked, logger: this.logger }),
+    );
   }
 
   /**

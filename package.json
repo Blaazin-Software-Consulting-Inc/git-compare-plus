@@ -2,7 +2,7 @@
   "name": "branch-compare",
   "displayName": "Git Branch & Worktree Compare",
   "description": "Compare git worktrees and branches with main (or any branch) and review the changed files side by side. Works with a single repository or many repositories in one window.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "local",
   "private": true,
   "license": "UNLICENSED",
@@ -428,6 +428,11 @@
           "default": 24,
           "minimum": 1,
           "description": "Flag a repo (and a comparison with one of its remote branches) as possibly out of date when it has not been fetched for this many hours."
+        },
+        "branchCompare.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Re-run the comparison in Changes automatically (about 1.5 s after edits, saves, commits or branch changes in the compared worktrees and repos). The Repositories view always follows git changes. Fetching is never automatic."
         }
       }
     },

@@ -46,6 +46,9 @@ const STATUS_DECORATION: Record<FileStatus, { badge: string; color: string; labe
 export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vscode.FileDecorationProvider {
   private readonly changeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.changeEmitter.event;
+  private readonly stateEmitter = new vscode.EventEmitter<ChangesState | undefined>();
+  /** Fires when a comparison is shown, re-shown (refresh) or cleared; drives the folder watchers. */
+  readonly onDidChangeState = this.stateEmitter.event;
   private state: ChangesState | undefined;
   private view: vscode.TreeView<ChangesNode> | undefined;
 
@@ -65,6 +68,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vs
     this.updateViewChrome();
     void vscode.commands.executeCommand('setContext', 'branchCompare.hasComparison', true);
     this.changeEmitter.fire();
+    this.stateEmitter.fire(state);
   }
 
   /** Back to the empty welcome state. */
@@ -73,6 +77,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vs
     this.updateViewChrome();
     void vscode.commands.executeCommand('setContext', 'branchCompare.hasComparison', false);
     this.changeEmitter.fire();
+    this.stateEmitter.fire(undefined);
   }
 
   /** Every file node in display order; used by "Open All Changes". */

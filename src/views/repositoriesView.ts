@@ -30,6 +30,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { baseLabel, baseMatches } from '../baseStore';
 import { formatAge, isFetchStale } from '../operations';
+import { stableSignature } from '../autoRefresh/scheduling';
 import { sortBranches, sortWorktrees } from '../treeOrder';
 import type { BaseSpec, RepoInfo, Subject } from '../comparison';
 import type { GitCli } from '../git/gitCli';
@@ -75,6 +76,8 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   // Promise caches: concurrent expands of the same repo share one git invocation.
   private repos: Promise<RepoInfo[]> | undefined;
   private readonly details = new Map<string, Promise<RepoDetails>>();
+  // commonDir → repo, for refreshes that arrive keyed by common dir (git change events).
+  private knownRepos = new Map<string, RepoInfo>();
 
   constructor(private readonly deps: RepositoriesViewDeps) {}
 
@@ -83,6 +86,34 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     this.repos = undefined;
     this.details.clear();
     this.changeEmitter.fire();
+  }
+
+  /**
+   * Automatic refresh (git change events): reload a repo's data in the background and redraw only
+   * if something actually changed. Repos never expanded have nothing cached and are skipped; they
+   * load fresh when opened. Never throws; a failed reload keeps the old data (logged at WARN).
+   */
+  async refreshRepoIfChanged(commonDir: string): Promise<void> {
+    const repo = this.knownRepos.get(commonDir);
+    const current = this.details.get(commonDir);
+    if (repo === undefined || current === undefined) {
+      return;
+    }
+    try {
+      const [before, after] = await Promise.all([current.catch(() => undefined), this.loadDetails(repo)]);
+      // The cache may have been replaced meanwhile (manual Refresh, a git action); keep the newer.
+      if (this.details.get(commonDir) !== current || (before !== undefined && stableSignature(before) === stableSignature(after))) {
+        return;
+      }
+      this.details.set(commonDir, Promise.resolve(after));
+      this.changeEmitter.fire();
+    } catch (error) {
+      this.deps.logger.warn('background repository reload failed; keeping previous data', {
+        function: 'refreshRepoIfChanged',
+        repo: repo.name,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /** Reload one repo's worktrees, branches and fetch time (after a git action on it). */
@@ -103,7 +134,10 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
 
   /** Repos currently shown, discovering them if the view has not loaded yet. */
   getRepos(): Promise<RepoInfo[]> {
-    this.repos ??= this.deps.discoverRepos();
+    this.repos ??= this.deps.discoverRepos().then((repos) => {
+      this.knownRepos = new Map(repos.map((r) => [r.commonDir, r]));
+      return repos;
+    });
     return this.repos;
   }
 

@@ -77,10 +77,26 @@ files are grouped by repo; repos with no changes are hidden and counted at the t
 to open its diff in the editor.
 
 The title bar has **Open All Changes** (every file in one scrolling diff), **Refresh Comparison**
-(re-run after edits), **Fetch and Refresh** and **Clear**. Its `…` menu has the same three header actions.
+(re-run now; normally this happens automatically), **Fetch and Refresh** and **Clear**. Its `…` menu has the same three header actions.
 
 If the base is a remote branch that hasn't been fetched recently, the **With:** row turns into a
 warning: `fetched 3 days ago, may be out of date`.
+
+### Staying current
+
+Both views update themselves; you only need **Refresh** if you've turned automatic refresh off.
+
+| View | Updates when | How |
+| --- | --- | --- |
+| **Repositories** | You commit, switch, create or delete branches, add or remove worktrees, or fetch, whether in Source Control, the terminal or Claude Code | Follows Cursor's git change events. Each repo reloads about 1 s after changes stop, and the tree redraws only if something actually changed. |
+| **Changes** | Files change in a compared worktree (edits, saves, new or deleted files), or the git state of a compared repo changes | Watches the compared worktree folders, including ones not open in this window, plus git events for the repos involved. Re-runs about 1.5 s after changes stop and redraws only if the results differ. Turn off with `branchCompare.autoRefresh`. |
+| **Ages** (`3 h ago`, stale fetch) | Every minute | Redraw only, no git commands. |
+
+Changes inside `.git`, `node_modules`, `dist`, `build`, `out`, `coverage`, `cdk.out` and
+similar folders don't trigger a re-run.
+
+**Fetching is never automatic:** it contacts your git host using your credentials. If Cursor's
+own `git.autofetch` is on, the remote branches it fetches show up here automatically.
 
 ### What is compared
 
@@ -121,6 +137,7 @@ the edited files, which `git gc` cleans up later.
 | `branchCompare.includeUntracked`   | `true`             | Treat never-added files as uncommitted edits (shown, or counted).   |
 | `branchCompare.compareMode`        | `sinceBranchPoint` | Starting mode: `sinceBranchPoint` or `allDifferences`.               |
 | `branchCompare.staleFetchHours`    | `24`               | After this many hours without a fetch, a repo is flagged as out of date. |
+| `branchCompare.autoRefresh`        | `true`             | Re-run the comparison in Changes automatically when its inputs change.   |
 
 Logs are under **View → Output → Git Branch & Worktree Compare**. For more detail, run
 **Developer: Set Log Level…** and choose Debug.
@@ -167,6 +184,10 @@ Install or update it in each Cursor profile that should have it, then run **Deve
 | `src/treeOrder.ts`              | Order of worktrees and branches: default/main/master first, then newest |
 | `src/branchCandidates.ts`       | Order of branch names when comparing several repos at once          |
 | `src/logger.ts`                 | Structured logging to an output channel                              |
+| `src/autoRefresh/gitEvents.ts`  | Follows Cursor's git change events, waiting for changes to stop per repo |
+| `src/autoRefresh/changesAutoRefresh.ts` | Re-runs Changes: folder watchers + git events → one non-overlapping re-run |
+| `src/autoRefresh/scheduling.ts` | Waiting for changes to stop, combining overlapping re-runs, change detection |
+| `src/autoRefresh/watchPaths.ts` | Which folders are watched and which changes are ignored             |
 
 ## Design notes
 
@@ -176,6 +197,11 @@ Install or update it in each Cursor profile that should have it, then run **Deve
   and to find the git binary.
 - **Default branch**: `origin/HEAD`, falling back to `origin/main`, `origin/master`, `main`, then
   `master`. To fix a repo where `origin/HEAD` isn't set, run `git remote set-head origin --auto`.
+- **Automatic refresh redraws only when something changed.** Cursor reports a repo change after
+  every `git status` it runs, including on window focus. Comparing results before redrawing keeps
+  the tree still. It also stops the comparison triggering itself: a base snapshot writes git
+  objects, which can prompt one more status run, and the re-run that follows finds identical
+  results and stops.
 - **Git commands run with `GIT_OPTIONAL_LOCKS=0`** so they don't fight the editor's background
   `git status` for `index.lock`.
 - **Credentials embedded in remote URLs are redacted** (`https://user:token@…` →

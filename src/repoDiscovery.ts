@@ -15,21 +15,16 @@
  * and vendoring its full `git.d.ts` would be noise. Verified against Cursor 3.24 / VS Code 1.128.
  */
 import * as vscode from 'vscode';
+import type { ObservableGitApi } from './autoRefresh/gitEvents';
 import type { RepoInfo } from './comparison';
 import type { GitCli } from './git/gitCli';
 import type { Logger } from './logger';
 import { groupRepos, type RepoProbe } from './repos';
 
-/** The members of the git extension's `Repository` this extension reads. */
-interface GitRepository {
-  readonly rootUri: vscode.Uri;
-}
-
-/** The members of the git extension's `API` (v1) this extension uses. */
-export interface GitApi {
+/** The members of the git extension's `API` (v1) this extension uses (events: autoRefresh/gitEvents.ts). */
+export interface GitApi extends ObservableGitApi {
   readonly state: 'uninitialized' | 'initialized';
   readonly onDidChangeState: vscode.Event<'uninitialized' | 'initialized'>;
-  readonly repositories: readonly GitRepository[];
   readonly git: { readonly path: string };
 }
 
