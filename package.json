@@ -2,7 +2,7 @@
   "name": "branch-compare",
   "displayName": "Git Branch & Worktree Compare",
   "description": "Compare git worktrees and branches with main (or any branch) and review the changed files side by side. Works with a single repository or many repositories in one window.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "local",
   "private": true,
   "license": "UNLICENSED",

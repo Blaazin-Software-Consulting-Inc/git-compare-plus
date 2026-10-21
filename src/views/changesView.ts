@@ -50,6 +50,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vs
   /** Fires when a comparison is shown, re-shown (refresh) or cleared; drives the folder watchers. */
   readonly onDidChangeState = this.stateEmitter.event;
   private state: ChangesState | undefined;
+  private staleText: string | undefined;
   private view: vscode.TreeView<ChangesNode> | undefined;
 
   /** Attach the TreeView so description/message can be updated with the state. */
@@ -147,12 +148,24 @@ export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vs
     const results = this.state?.results ?? [];
     const fileCount = results.reduce((total, r) => total + r.files.length, 0);
     this.view.description = this.state === undefined ? undefined : `${fileCount} file${fileCount === 1 ? '' : 's'}`;
-    if (results.length > 1) {
+    // A failing automatic refresh outranks the summary: the list below may be out of date.
+    if (this.staleText !== undefined && this.state !== undefined) {
+      this.view.message = this.staleText;
+    } else if (results.length > 1) {
       const changed = results.filter((r) => r.files.length > 0).length;
       this.view.message = `${fileCount} files in ${changed} of ${results.length} repositories`;
     } else {
       this.view.message = undefined;
     }
+  }
+
+  /**
+   * Show (or clear, with undefined) the "couldn't refresh, showing earlier results" message.
+   * Set by ChangesAutoRefresh while a failure episode lasts.
+   */
+  setStaleMessage(text: string | undefined): void {
+    this.staleText = text;
+    this.updateViewChrome();
   }
 }
 

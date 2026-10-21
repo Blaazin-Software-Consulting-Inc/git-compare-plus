@@ -16,10 +16,16 @@
  *
  * Controlled by `branchCompare.autoRefresh` (default on). Watchers are rebuilt only when the set of
  * watched folders changes, not on every refresh.
+ *
+ * Failures: an automatic rerun never shows an error popup per failure. While reruns fail, the
+ * view's message bar says the list is from earlier (failureTracker.ts); if the failure persists
+ * (3 in a row or 1 minute), `onPersistentFailure` is called once for that episode. Any successful
+ * comparison, automatic or manual, ends the episode and clears the message.
  */
 import * as vscode from 'vscode';
 import type { Logger } from '../logger';
 import type { ChangesProvider, ChangesState } from '../views/changesView';
+import { FailureTracker, staleMessage } from './failureTracker';
 import { CoalescingRunner } from './scheduling';
 import { involvedCommonDirs, isIgnoredChange, watchedRoots } from './watchPaths';
 
@@ -34,25 +40,43 @@ export class ChangesAutoRefresh implements vscode.Disposable {
   private watchedKey = '';
   private involved = new Set<string>();
   private readonly stateSubscription: vscode.Disposable;
+  // One key: the comparison on display.
+  private readonly failures = new FailureTracker<'changes'>();
 
   /**
-   * @param rerun - recompute and redraw-if-changed (CompareCommands.rerunQuietly).
+   * @param rerun - recompute and redraw-if-changed (CompareCommands.rerunQuietly); rejects on failure.
    * @param isEnabled - reads the `branchCompare.autoRefresh` setting.
+   * @param onPersistentFailure - called once per failure episode that persists.
    */
   constructor(
     private readonly changes: ChangesProvider,
     rerun: () => Promise<void>,
     private readonly isEnabled: () => boolean,
+    private readonly onPersistentFailure: (reason: string) => void,
     private readonly logger: Logger,
   ) {
-    this.runner = new CoalescingRunner(RERUN_DEBOUNCE_MS, rerun, (error) =>
-      // Background work: never a toast. The next trigger (or a manual Refresh) retries.
-      this.logger.warn('automatic comparison refresh failed', {
-        function: 'ChangesAutoRefresh.run',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
+    this.runner = new CoalescingRunner(
+      RERUN_DEBOUNCE_MS,
+      async () => {
+        await rerun();
+        this.recovered();
+      },
+      (error) => this.failed(error),
     );
-    this.stateSubscription = changes.onDidChangeState((state) => this.follow(state));
+    this.stateSubscription = changes.onDidChangeState((state) => {
+      // Every shown comparison was computed successfully (manual or automatic): the list is
+      // current again, so any failure episode is over.
+      if (state !== undefined) {
+        this.recovered();
+      }
+      this.follow(state);
+    });
+  }
+
+  /** Minute timer: keep the "(2 min ago)" in the stale message current. */
+  refreshMessage(): void {
+    const episode = this.failures.get('changes');
+    this.changes.setStaleMessage(episode === undefined ? undefined : staleMessage('the comparison', episode, Date.now()));
   }
 
   /** A repo changed (git events); rerun if it is part of the comparison on display. */
@@ -79,6 +103,9 @@ export class ChangesAutoRefresh implements vscode.Disposable {
       this.involved = new Set();
       this.watchedKey = '';
       this.disposeWatchers();
+      // Nothing is auto-refreshing any more, so "couldn't refresh" no longer applies.
+      this.failures.forget('changes');
+      this.changes.setStaleMessage(undefined);
       return;
     }
     this.involved = involvedCommonDirs(state.setup);
@@ -101,6 +128,34 @@ export class ChangesAutoRefresh implements vscode.Disposable {
       }
     };
     return vscode.Disposable.from(watcher, watcher.onDidChange(onEvent), watcher.onDidCreate(onEvent), watcher.onDidDelete(onEvent));
+  }
+
+  private recovered(): void {
+    if (this.failures.recordSuccess('changes')) {
+      this.refreshMessage();
+    }
+  }
+
+  // Background failure: never a popup per failure; the message bar says the list is from earlier,
+  // and a persistent episode escalates once. The next trigger (or a manual Refresh) retries.
+  private failed(error: unknown): void {
+    const reason = error instanceof Error ? error.message : String(error);
+    const { notify, episode } = this.failures.recordFailure('changes', reason, Date.now());
+    this.logger.warn('automatic comparison refresh failed', {
+      function: 'ChangesAutoRefresh.run',
+      reason,
+      consecutiveFailures: episode.consecutive,
+      failingSince: new Date(episode.since).toISOString(),
+    });
+    if (notify) {
+      this.logger.error('automatic comparison refresh keeps failing', error, {
+        function: 'ChangesAutoRefresh.run',
+        consecutiveFailures: episode.consecutive,
+        failingSince: new Date(episode.since).toISOString(),
+      });
+      this.onPersistentFailure(reason);
+    }
+    this.refreshMessage();
   }
 
   private disposeWatchers(): void {

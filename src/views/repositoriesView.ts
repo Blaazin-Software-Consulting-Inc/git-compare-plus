@@ -30,6 +30,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { baseLabel, baseMatches } from '../baseStore';
 import { formatAge, isFetchStale } from '../operations';
+import { FailureTracker, repositoriesStaleMessage } from '../autoRefresh/failureTracker';
 import { stableSignature } from '../autoRefresh/scheduling';
 import { sortBranches, sortWorktrees } from '../treeOrder';
 import type { BaseSpec, RepoInfo, Subject } from '../comparison';
@@ -65,6 +66,8 @@ export interface RepositoriesViewDeps {
   getBase(repo: RepoInfo): BaseSpec | undefined;
   /** Hours after which a repo's last fetch is flagged as stale (setting `branchCompare.staleFetchHours`). */
   staleFetchHours(): number;
+  /** A background reload of `repoName` keeps failing (called once per failure episode). */
+  onPersistentFailure(repoName: string, reason: string): void;
   readonly logger: Logger;
 }
 
@@ -78,8 +81,29 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   private readonly details = new Map<string, Promise<RepoDetails>>();
   // commonDir → repo, for refreshes that arrive keyed by common dir (git change events).
   private knownRepos = new Map<string, RepoInfo>();
+  // Background reload failures per repo (commonDir). While a repo has an episode, its row shows a
+  // warning and the view's message bar says the data is from before (see failureTracker.ts).
+  private readonly failures = new FailureTracker<string>();
+  private view: vscode.TreeView<RepoTreeNode> | undefined;
 
   constructor(private readonly deps: RepositoriesViewDeps) {}
+
+  /** Attach the TreeView so the stale-data message can be shown in its message bar. */
+  attach(view: vscode.TreeView<RepoTreeNode>): void {
+    this.view = view;
+  }
+
+  /** Recompute the message bar (minute timer: keeps "2 min ago" current). */
+  refreshMessage(): void {
+    if (this.view === undefined) {
+      return;
+    }
+    const failing = this.failures.all().flatMap(([commonDir, episode]) => {
+      const repo = this.knownRepos.get(commonDir);
+      return repo === undefined ? [] : [{ name: repo.name, episode }];
+    });
+    this.view.message = repositoriesStaleMessage(failing, Date.now());
+  }
 
   /** Drop every cache and redraw (Refresh button; also after the workspace folders change). */
   refresh(): void {
@@ -101,19 +125,47 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     }
     try {
       const [before, after] = await Promise.all([current.catch(() => undefined), this.loadDetails(repo)]);
+      const recovered = this.failures.recordSuccess(commonDir);
       // The cache may have been replaced meanwhile (manual Refresh, a git action); keep the newer.
-      if (this.details.get(commonDir) !== current || (before !== undefined && stableSignature(before) === stableSignature(after))) {
-        return;
+      const replaced = this.details.get(commonDir) !== current;
+      const unchanged = before !== undefined && stableSignature(before) === stableSignature(after);
+      if (!replaced && !unchanged) {
+        this.details.set(commonDir, Promise.resolve(after));
       }
-      this.details.set(commonDir, Promise.resolve(after));
-      this.changeEmitter.fire();
+      if (recovered) {
+        this.refreshMessage();
+      }
+      if ((!replaced && !unchanged) || recovered) {
+        this.changeEmitter.fire();
+      }
     } catch (error) {
-      this.deps.logger.warn('background repository reload failed; keeping previous data', {
+      this.recordBackgroundFailure(repo, error);
+    }
+  }
+
+  // Background failure: keep showing the previous data, mark the repo and the message bar, and
+  // escalate once per episode if it persists. Each failure is WARN; a persistent one is ERROR.
+  private recordBackgroundFailure(repo: RepoInfo, error: unknown): void {
+    const reason = error instanceof Error ? error.message : String(error);
+    const { notify, episode } = this.failures.recordFailure(repo.commonDir, reason, Date.now());
+    this.deps.logger.warn('background repository reload failed; keeping previous data', {
+      function: 'refreshRepoIfChanged',
+      repo: repo.name,
+      reason,
+      consecutiveFailures: episode.consecutive,
+      failingSince: new Date(episode.since).toISOString(),
+    });
+    if (notify) {
+      this.deps.logger.error('background repository reload keeps failing', error, {
         function: 'refreshRepoIfChanged',
         repo: repo.name,
-        reason: error instanceof Error ? error.message : String(error),
+        consecutiveFailures: episode.consecutive,
+        failingSince: new Date(episode.since).toISOString(),
       });
+      this.deps.onPersistentFailure(repo.name, reason);
     }
+    this.refreshMessage();
+    this.changeEmitter.fire();
   }
 
   /** Reload one repo's worktrees, branches and fetch time (after a git action on it). */
@@ -205,6 +257,16 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
       pending = this.loadDetails(repo);
       // Don't cache a failure: the next expand (or Refresh) should retry.
       pending.catch(() => this.details.delete(repo.commonDir));
+      // A successful load (manual Refresh, expand, after a git action) ends any failure episode.
+      pending.then(
+        () => {
+          if (this.failures.recordSuccess(repo.commonDir)) {
+            this.refreshMessage();
+            this.changeEmitter.fire();
+          }
+        },
+        () => undefined,
+      );
       this.details.set(repo.commonDir, pending);
     }
     return pending;
@@ -297,6 +359,12 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     item.tooltip = `${repo.root}${stale ? '\nNot fetched recently: comparisons with origin/… may be out of date. Right-click → Fetch.' : ''}`;
     if (stale) {
       item.iconPath = new vscode.ThemeIcon('repo', new vscode.ThemeColor('list.warningForeground'));
+    }
+    // A failing background reload outranks the fetch hint: what is shown here may be out of date.
+    const failure = this.failures.get(repo.commonDir);
+    if (failure !== undefined) {
+      item.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('list.warningForeground'));
+      item.tooltip += `\nCouldn't refresh (${formatAge(failure.lastAt, Date.now())}): ${failure.reason}\nShowing earlier data. Refresh to retry.`;
     }
     return item;
   }

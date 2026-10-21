@@ -1,6 +1,6 @@
 # Git Branch & Worktree Compare
 
-A local Cursor / VS Code extension for reviewing what a git **worktree** or **branch** changes
+A local VS Code / Cursor extension for reviewing what a git **worktree** or **branch** changes
 compared with `main` (or any other branch). It works with a single repository or with many
 repositories in one window, such as `my-services.code-workspace`.
 
@@ -95,6 +95,19 @@ Both views update themselves; you only need **Refresh** if you've turned automat
 Changes inside `.git`, `node_modules`, `dist`, `build`, `out`, `coverage`, `cdk.out` and
 similar folders don't trigger a re-run.
 
+**When a background refresh fails** (for example git's `index.lock` held during a rebase, or a
+worktree folder deleted from under the view), the view keeps showing what it had, and says so:
+
+- The message bar at the top of the view reads `⚠ Couldn't refresh <repo or comparison> (2 min
+  ago): <reason>. Showing earlier results; Refresh to retry.` In Repositories, the affected repo
+  also gets a warning icon.
+- No popup appears for a one-off failure; most clear up on the next refresh a second later.
+- If it keeps failing (3 times in a row, or for a minute), **one** notification appears for that
+  run of failures, with **Show Log** plus **Refresh** (Repositories) or **Turn Off
+  Auto-Refresh** (Changes). It won't appear again until a refresh has succeeded.
+- The next successful refresh, automatic or manual, removes the message without a popup.
+- Errors from actions you start yourself (compare, fetch, delete…) still show immediately.
+
 **Fetching is never automatic:** it contacts your git host using your credentials. If Cursor's
 own `git.autofetch` is on, the remote branches it fetches show up here automatically.
 
@@ -164,6 +177,14 @@ Install or update it in each Cursor profile that should have it, then run **Deve
 `--profile` matters. Without it, the extension goes into the Default profile, but Cursor opens
 `my-services.code-workspace` with **<your-profile>**.
 
+**VS Code** (1.90 or later) works the same way. The extension only uses the standard VS Code
+API and VS Code's built-in Git extension, and nothing in it is specific to Cursor. Install with
+VS Code's own command (VS Code profiles are separate from Cursor's):
+
+```bash
+"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension branch-compare.vsix --force
+```
+
 ## Layout
 
 | Path                            | Role                                                                 |
@@ -188,6 +209,7 @@ Install or update it in each Cursor profile that should have it, then run **Deve
 | `src/autoRefresh/changesAutoRefresh.ts` | Re-runs Changes: folder watchers + git events → one non-overlapping re-run |
 | `src/autoRefresh/scheduling.ts` | Waiting for changes to stop, combining overlapping re-runs, change detection |
 | `src/autoRefresh/watchPaths.ts` | Which folders are watched and which changes are ignored             |
+| `src/autoRefresh/failureTracker.ts` | Background-failure tracking: when to show the stale message, when to notify once |
 
 ## Design notes
 

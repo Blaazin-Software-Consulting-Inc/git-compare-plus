@@ -67,6 +67,10 @@ export function activate(context: vscode.ExtensionContext): void {
     discoverRepos: async () => (await getServices()).discover(),
     getBase: (repo) => bases.get(repo.commonDir),
     staleFetchHours: () => settings().staleFetchHours,
+    onPersistentFailure: (repoName, reason) =>
+      void notifyPersistentFailure(`the ${repoName} repository`, reason, channel, [
+        { title: 'Refresh', run: () => repositories.refresh() },
+      ]),
     logger,
   });
   // canSelectMany: Delete Branch / Remove Worktree act on the whole selection (one confirmation).
@@ -75,6 +79,7 @@ export function activate(context: vscode.ExtensionContext): void {
     showCollapseAll: true,
     canSelectMany: true,
   });
+  repositories.attach(repositoriesView);
   const changes = new ChangesProvider();
   const changesView = vscode.window.createTreeView('branchCompare.changes', { treeDataProvider: changes, showCollapseAll: true });
   changes.attach(changesView);
@@ -119,7 +124,7 @@ export function activate(context: vscode.ExtensionContext): void {
     register('branchCompare.deleteBranch', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => actions.deleteBranches(selectionTargets(node, selection)), logger),
     // Delete key: keybindings pass no arguments, so read the tree's own selection.
     register('branchCompare.deleteSelected', () => actions.deleteSelection(repositoriesView.selection), logger),
-    ...startAutoRefresh(getServices, repositories, repositoriesView, changes, commands, logger),
+    ...startAutoRefresh(getServices, repositories, repositoriesView, changes, commands, channel, logger),
     register('branchCompare.switchBranch', (node?: RepoTreeNode) => actions.switchBranch(node), logger),
   );
 }
@@ -141,9 +146,22 @@ function startAutoRefresh(
   repositoriesView: vscode.TreeView<RepoTreeNode>,
   changes: ChangesProvider,
   commands: CompareCommands,
+  channel: vscode.LogOutputChannel,
   logger: Logger,
 ): vscode.Disposable[] {
-  const changesRefresh = new ChangesAutoRefresh(changes, () => commands.rerunQuietly(), () => settings().autoRefresh, logger);
+  const changesRefresh = new ChangesAutoRefresh(
+    changes,
+    () => commands.rerunQuietly(),
+    () => settings().autoRefresh,
+    (reason) =>
+      void notifyPersistentFailure('the comparison', reason, channel, [
+        {
+          title: 'Turn Off Auto-Refresh',
+          run: () => vscode.workspace.getConfiguration('branchCompare').update('autoRefresh', false, vscode.ConfigurationTarget.Global),
+        },
+      ]),
+    logger,
+  );
 
   let gitSubscription: vscode.Disposable | undefined;
   let disposed = false;
@@ -178,6 +196,8 @@ function startAutoRefresh(
     if (repositoriesView.visible) {
       repositories.redraw();
     }
+    repositories.refreshMessage();
+    changesRefresh.refreshMessage();
     void commands.refreshAges();
   }, AGE_REFRESH_MS);
 
@@ -194,6 +214,29 @@ function startAutoRefresh(
       gitSubscription?.dispose();
     }),
   ];
+}
+
+/**
+ * The one popup for a failure episode that persists (failureTracker.ts decides when). Non-modal;
+ * offers the log plus a context-specific fix. Momentary failures never get here: they only show
+ * in the view's message bar.
+ */
+async function notifyPersistentFailure(
+  scope: string,
+  reason: string,
+  channel: vscode.LogOutputChannel,
+  extraActions: readonly { title: string; run: () => unknown }[],
+): Promise<void> {
+  const choice = await vscode.window.showWarningMessage(
+    `Git Branch & Worktree Compare: automatic refresh of ${scope} keeps failing: ${reason}. The view is showing earlier results.`,
+    'Show Log',
+    ...extraActions.map((a) => a.title),
+  );
+  if (choice === 'Show Log') {
+    channel.show();
+    return;
+  }
+  await extraActions.find((a) => a.title === choice)?.run();
 }
 
 /** Nothing to clean up beyond `context.subscriptions`. */
