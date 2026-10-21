@@ -25,7 +25,8 @@ export function repo(name: string): RepoInfo {
 
 /**
  * A port where every repo has `origin/master`, merge base `mb`, every revision resolves to
- * `sha:<rev>`, snapshots are `tree:<root>`, nothing is uncommitted, and there are no changes.
+ * `sha:<rev>`, snapshots are `tree:<root>`, nothing is uncommitted, and there are no changes
+ * (so no line stats either).
  */
 export function fakePort(overrides: Partial<ComparisonPort> = {}): { [K in keyof ComparisonPort]: ReturnType<typeof vi.fn> & ComparisonPort[K] } {
   return {
@@ -33,6 +34,11 @@ export function fakePort(overrides: Partial<ComparisonPort> = {}): { [K in keyof
     mergeBase: vi.fn(async () => 'mb'),
     resolveCommit: vi.fn(async (_cwd: string, revision: string) => `sha:${revision}`),
     diffNameStatus: vi.fn(async () => []),
+    diffNumstat: vi.fn(async () => new Map()),
+    commitsBetween: vi.fn(async () => []),
+    untrackedLineStats: vi.fn(async () => new Map()),
+    blobIds: vi.fn(async () => new Map()),
+    hashWorkingFiles: vi.fn(async () => new Map()),
     untracked: vi.fn(async () => []),
     uncommittedCount: vi.fn(async () => 0),
     snapshotWorktree: vi.fn(async (root: string) => `tree:${root}`),

@@ -2,7 +2,7 @@
   "name": "branch-compare",
   "displayName": "Git Branch & Worktree Compare",
   "description": "Compare git worktrees and branches with main (or any branch) and review the changed files side by side. Works with a single repository or many repositories in one window.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "local",
   "private": true,
   "license": "UNLICENSED",
@@ -104,6 +104,50 @@
         "title": "Open All Changes",
         "category": "Branch & Worktree Compare",
         "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "branchCompare.viewAsTree",
+        "title": "View as Tree",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "branchCompare.viewAsList",
+        "title": "View as List",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "branchCompare.swapSides",
+        "title": "Swap Sides",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "branchCompare.openFile",
+        "title": "Open File",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "branchCompare.openFileAtBase",
+        "title": "Open File at Base",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.openCommit",
+        "title": "Open Commit",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.compareWithCommit",
+        "title": "Compare With This Commit (show only what came after)",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.copyCommitId",
+        "title": "Copy Commit ID",
+        "category": "Branch & Worktree Compare"
       },
       {
         "command": "branchCompare.rerun",
@@ -221,9 +265,24 @@
           "group": "navigation@3"
         },
         {
+          "command": "branchCompare.viewAsTree",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison && branchCompare.changesLayout != tree",
+          "group": "navigation@4"
+        },
+        {
+          "command": "branchCompare.viewAsList",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison && branchCompare.changesLayout == tree",
+          "group": "navigation@4"
+        },
+        {
           "command": "branchCompare.changeBase",
           "when": "view == branchCompare.changes && branchCompare.hasComparison",
           "group": "1_setup@1"
+        },
+        {
+          "command": "branchCompare.swapSides",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "group": "1_setup@4"
         },
         {
           "command": "branchCompare.toggleUncommitted",
@@ -242,6 +301,36 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "branchCompare.openFile",
+          "when": "view == branchCompare.changes && viewItem =~ /^changedFile\\.(?!deleted$)/",
+          "group": "inline@1"
+        },
+        {
+          "command": "branchCompare.openFile",
+          "when": "view == branchCompare.changes && viewItem =~ /^changedFile\\.(?!deleted$)/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "branchCompare.openFileAtBase",
+          "when": "view == branchCompare.changes && viewItem =~ /^changedFile\\.(?!(added|untracked)$)/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "branchCompare.openCommit",
+          "when": "view == branchCompare.changes && viewItem =~ /^commit$/",
+          "group": "1_commit@1"
+        },
+        {
+          "command": "branchCompare.compareWithCommit",
+          "when": "view == branchCompare.changes && viewItem =~ /^commit$/",
+          "group": "1_commit@2"
+        },
+        {
+          "command": "branchCompare.copyCommitId",
+          "when": "view == branchCompare.changes && viewItem =~ /^commit$/",
+          "group": "2_copy@1"
+        },
         {
           "command": "branchCompare.compare",
           "when": "view == branchCompare.repositories && viewItem =~ /^comparable/",
@@ -340,6 +429,30 @@
           "when": "false"
         },
         {
+          "command": "branchCompare.swapSides",
+          "when": "branchCompare.hasComparison"
+        },
+        {
+          "command": "branchCompare.openFile",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.openFileAtBase",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.openCommit",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.compareWithCommit",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.copyCommitId",
+          "when": "false"
+        },
+        {
           "command": "branchCompare.openAllChanges",
           "when": "branchCompare.hasComparison"
         },
@@ -429,6 +542,19 @@
           "minimum": 1,
           "description": "Flag a repo (and a comparison with one of its remote branches) as possibly out of date when it has not been fetched for this many hours."
         },
+        "branchCompare.changesLayout": {
+          "type": "string",
+          "enum": [
+            "list",
+            "tree"
+          ],
+          "enumDescriptions": [
+            "Changed files in one list, each with its folder shown next to it.",
+            "Changed files grouped into folders (single-child folders are combined)."
+          ],
+          "default": "list",
+          "description": "How the Changes view lays out changed files. Toggle from the view's title bar."
+        },
         "branchCompare.autoRefresh": {
           "type": "boolean",
           "default": true,
@@ -447,6 +573,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "generate:icons": "npm run build && node scripts/generate-diff-bar-icons.js",
     "test": "vitest run",
     "package": "npm run build && vsce package --no-dependencies --allow-missing-repository --skip-license --out branch-compare.vsix"
   },

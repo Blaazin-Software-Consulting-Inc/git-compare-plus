@@ -25,6 +25,14 @@ Everything else follows, newest commit first. The main worktree is always first 
 Each worktree and branch shows the age of its latest commit (`3 days ago`). **Compare With…**
 lists branches in the same order.
 
+**Ahead/behind:** each worktree and branch also shows how far it has moved from the repo's
+comparison base. `↑3 ↓12` means 3 commits the base doesn't have, and 12 commits on the base it
+doesn't have. A row level with the base shows no arrows; hover for the counts in words. The counts
+follow the comparison base: set another base and every row recounts against it. A worktree base
+counts from its last commit. With git 2.41 or later, every branch is counted in one git command.
+Older git (Apple's bundled git can lag behind) counts local branches and detached worktrees one
+by one, and remote branches show no counts.
+
 - **$(git-compare) button** (hover over a repo, worktree or branch): compare it with the repo's
   **comparison base**. That's the repo's default branch (`origin/HEAD`, which is `master` or
   `main` depending on the repo) unless you've set something else.
@@ -72,12 +80,45 @@ change that part, and the comparison re-runs:
 ⑂  Showing: changes since branch point · click for all differences        ← click: switch mode
 ```
 
-Below the header are the changed files, with A/M/D/R/U badges. When several repos are compared,
-files are grouped by repo; repos with no changes are hidden and counted at the top. Click a file
-to open its diff in the editor.
+Below the header are the changed files, with A/M/D/R/U badges and lines added and removed
+(`+12 −3`, or `binary`). Each file's icon is a small GitHub-style bar of five squares: green for
+added lines, red for removed, grey when fewer than five lines changed. Hover a file for the
+counts in colour and in words. Binary files keep their normal file-type icon. The view title and
+each repo row show the totals. When several repos are
+compared, files are grouped by repo; repos with no changes are hidden and counted at the top.
+Click a file to open its diff in the editor.
+
+**Commits:** a collapsed **Commits** group (per repo) lists the commits the comparison covers,
+newest first: since the branch point, or the commits the base doesn't have in "all differences"
+mode. Each row shows the short ID, author and age. Click a commit to open the files it changed in
+one diff, compared with its parent. The comparison stays as it was. Right-click for **Compare
+With This Commit**, which shows only what came after it, and **Copy Commit ID**. Uncommitted edits
+aren't commits, so they never appear here. The list shows the newest 200 (`200+`). It isn't shown
+when the base includes uncommitted edits, because that snapshot has no history.
+
+**Reviewed checkboxes:** tick a file once you've reviewed it. The view title and each repo row
+count the reviewed files (`14 files · 3 reviewed · +320 −45`). A mark covers that exact version of
+the diff, so it clears by itself as soon as the file changes on either side, after an edit or when
+the base moves. It survives things that don't change the diff: committing the file as it was,
+switching uncommitted edits on or off, or a window reload. Marks are saved per workspace and per
+repository, so the same diff seen from another worktree counts as reviewed too.
+
+Line counts come from the same two sides as the file list. Untracked files are counted from disk,
+except ones larger than 2 MB, which are listed without a count. If the counts can't be worked out,
+the files are still listed, just without them.
+
+Right-click a file for **Open File**, the file itself: the real file, editable, when the
+comparison includes uncommitted edits. **Open File at Base** opens the base version, read-only.
+Each is hidden when that side doesn't exist (a new or deleted file). Open File is also the
+$(go-to-file) button on the row.
 
 The title bar has **Open All Changes** (every file in one scrolling diff), **Refresh Comparison**
-(re-run now; normally this happens automatically), **Fetch and Refresh** and **Clear**. Its `…` menu has the same three header actions.
+(re-run now; normally this happens automatically), **Fetch and Refresh**, **View as Tree / View as
+List** and **Clear**. In tree view, files are grouped into folders with their own totals, and a
+folder that only holds one other folder is combined with it (`src/views`). The choice is saved as
+the `branchCompare.changesLayout` setting. The `…` menu has the three header actions plus **Swap
+Sides**: what you were reviewing becomes the base, and the base becomes what you review (one repo
+at a time). Each side keeps whether it includes uncommitted edits.
 
 If the base is a remote branch that hasn't been fetched recently, the **With:** row turns into a
 warning: `fetched 3 days ago, may be out of date`.
@@ -150,6 +191,7 @@ the edited files, which `git gc` cleans up later.
 | `branchCompare.includeUntracked`   | `true`             | Treat never-added files as uncommitted edits (shown, or counted).   |
 | `branchCompare.compareMode`        | `sinceBranchPoint` | Starting mode: `sinceBranchPoint` or `allDifferences`.               |
 | `branchCompare.staleFetchHours`    | `24`               | After this many hours without a fetch, a repo is flagged as out of date. |
+| `branchCompare.changesLayout`      | `list`             | Changes view layout: `list` or `tree` (folders). Title bar toggles it. |
 | `branchCompare.autoRefresh`        | `true`             | Re-run the comparison in Changes automatically when its inputs change.   |
 
 Logs are under **View → Output → Git Branch & Worktree Compare**. For more detail, run
@@ -162,6 +204,7 @@ npm install
 npm test          # vitest: unit tests + real-git integration tests (temp repos, worktrees, a local bare "remote")
 npm run build     # tsc → dist/
 npm run package   # build + branch-compare.vsix
+npm run generate:icons   # rewrite media/diff-bar/*.svg after changing src/views/diffBar.ts
 ```
 
 Install or update it in each Cursor profile that should have it, then run **Developer: Reload Window**:
@@ -198,10 +241,19 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
 | `src/views/repositoriesView.ts` | Repositories tree                                                    |
 | `src/views/changesView.ts`      | Changes tree + A/M/D/R/U badges                                      |
 | `src/views/changesHeader.ts`    | Wording of the three header rows (subject / base / mode)             |
+| `src/views/diffBar.ts`          | Green/red diff-bar icons and the coloured hover; `npm run generate:icons` writes `media/diff-bar/` |
+| `src/views/commitText.ts`       | Wording of the Commits group and commit rows                          |
+| `src/views/fileTree.ts`         | Groups changed files into compacted folders for the tree layout       |
+| `src/swapSides.ts`              | Swap Sides: subject ↔ base, keeping each side's uncommitted choice    |
+| `src/views/lineStatsText.ts`    | Wording of `+12 −3` line counts (files, repo rows, view title)       |
+| `src/review/fingerprints.ts`    | Identity of each file's diff (blob IDs of both sides) for reviewed marks |
+| `src/review/reviewStore.ts`     | Reviewed marks saved per repo, pinned to a diff fingerprint          |
+| `src/review/reviewToggles.ts`   | Groups checkbox changes into store writes                            |
 | `src/baseStore.ts`              | Comparison base saved per repo                                       |
 | `src/gitActions.ts`             | Fetch, create/remove worktree, create/delete/switch branch, with their confirmation dialogs |
 | `src/operations.ts`             | Safety checks for those actions (counts of what would be lost), naming rules, fetch age |
 | `src/views/content.ts`          | `branch-compare:` documents (file content at a revision)             |
+| `src/aheadBehind.ts`            | Commits ahead of / behind the comparison base for each row (`↑3 ↓12`) |
 | `src/treeOrder.ts`              | Order of worktrees and branches: default/main/master first, then newest |
 | `src/branchCandidates.ts`       | Order of branch names when comparing several repos at once          |
 | `src/logger.ts`                 | Structured logging to an output channel                              |
@@ -224,6 +276,12 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
   the tree still. It also stops the comparison triggering itself: a base snapshot writes git
   objects, which can prompt one more status run, and the re-run that follows finds identical
   results and stops.
+- **Reviewed marks are pinned to blob IDs, not revisions.** A file's fingerprint is the base-side
+  blob plus the subject-side blob (files on disk are hashed the way `git hash-object` does). A
+  revision changes for reasons unrelated to the file, such as another commit or any edit in a
+  snapshot base, and would reset every mark. A blob ID changes only when that file does. In
+  repos with clean filters (`core.autocrlf`, LFS), the hash on disk can differ from the committed
+  blob, so a mark made with uncommitted edits included may not carry over to "committed only".
 - **Git commands run with `GIT_OPTIONAL_LOCKS=0`** so they don't fight the editor's background
   `git status` for `index.lock`.
 - **Credentials embedded in remote URLs are redacted** (`https://user:token@…` →

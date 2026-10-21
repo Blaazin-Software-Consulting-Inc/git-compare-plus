@@ -18,7 +18,8 @@
  * given a second worktree (git refuses), so those menu entries are hidden for it.
  *
  * Order (treeOrder.ts): default branch, then main/master, then newest commit first; the main
- * worktree is always first. Each worktree/branch shows the age of its latest commit.
+ * worktree is always first. Each worktree/branch shows the age of its latest commit, and how many
+ * commits it is ahead of / behind the repo's comparison base (`↑3 ↓12`, aheadBehind.ts).
  *
  * The repo row also shows when it was last fetched; comparisons against `origin/…` are only as
  * current as that fetch.
@@ -28,6 +29,15 @@
  */
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import {
+  aheadBehindBase,
+  aheadBehindText,
+  aheadBehindTooltip,
+  loadAheadBehind,
+  worktreeAheadBehind,
+  type AheadBehind,
+  type AheadBehindCounts,
+} from '../aheadBehind';
 import { baseLabel, baseMatches } from '../baseStore';
 import { formatAge, isFetchStale } from '../operations';
 import { FailureTracker, repositoriesStaleMessage } from '../autoRefresh/failureTracker';
@@ -46,6 +56,8 @@ interface RepoDetails {
   readonly lastFetchedAt?: number;
   /** Worktree HEAD SHA → committer date (ms); shown as the worktree's age. */
   readonly worktreeDates: ReadonlyMap<string, number>;
+  /** Commits ahead/behind the comparison base at load time; undefined when unavailable. */
+  readonly aheadBehind?: AheadBehindCounts;
 }
 
 type GroupKind = 'worktrees' | 'branches' | 'remotes';
@@ -179,7 +191,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     return (await this.getDetails(repo)).lastFetchedAt;
   }
 
-  /** Redraw without reloading git data (e.g. after the comparison base changed). */
+  /** Redraw without reloading git data (e.g. the minute timer for ages). */
   redraw(): void {
     this.changeEmitter.fire();
   }
@@ -235,16 +247,27 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
         return this.repoItem(node.repo);
       case 'group':
         return this.groupItem(node.repo, node.group);
-      case 'worktree':
-        return worktreeItem(node.repo, node.worktree, node.isMain, this.deps.getBase(node.repo), await this.worktreeDate(node.repo, node.worktree));
-      case 'branch':
-        return branchItem(node.repo, node.ref, node.checkedOutIn, this.deps.getBase(node.repo));
+      case 'worktree': {
+        const counts = await this.aheadBehindCounts(node.repo);
+        return worktreeItem(node.repo, node.worktree, node.isMain, this.deps.getBase(node.repo), await this.worktreeDate(node.repo, node.worktree), {
+          counts: worktreeAheadBehind(counts, node.worktree),
+          baseLabel: counts?.baseLabel,
+        });
+      }
+      case 'branch': {
+        const counts = await this.aheadBehindCounts(node.repo);
+        return branchItem(node.repo, node.ref, node.checkedOutIn, this.deps.getBase(node.repo), { counts: counts?.byRef.get(node.ref.name), baseLabel: counts?.baseLabel });
+      }
       case 'message': {
         const item = new vscode.TreeItem(node.text);
         item.iconPath = new vscode.ThemeIcon(node.icon);
         return item;
       }
     }
+  }
+
+  private async aheadBehindCounts(repo: RepoInfo): Promise<AheadBehindCounts | undefined> {
+    return (await this.getDetails(repo)).aheadBehind;
   }
 
   private async worktreeDate(repo: RepoInfo, worktree: WorktreeEntry): Promise<number | undefined> {
@@ -282,7 +305,13 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
       git.lastFetchedAt(repo.root),
       git.defaultBranch(repo.root),
     ]);
-    const commitDates = await this.worktreeCommitDates(git, repo, worktrees);
+    // Counted against the base the compare button uses, so `↑3` means "3 commits that compare
+    // would show". A base change (Set/Clear Comparison Base) reloads the repo to recount.
+    const countBase = aheadBehindBase(this.deps.getBase(repo), defaultBranch, worktrees);
+    const [commitDates, aheadBehind] = await Promise.all([
+      this.worktreeCommitDates(git, repo, worktrees),
+      countBase === undefined ? undefined : loadAheadBehind(git, repo.root, countBase, refs, worktrees, this.deps.logger),
+    ]);
     this.deps.logger.debug('repository details loaded', {
       function: 'loadDetails',
       repo: repo.name,
@@ -290,12 +319,15 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
       refCount: refs.length,
       lastFetchedAt,
       defaultBranch,
+      aheadBehindBase: countBase?.label,
+      aheadBehindCount: aheadBehind?.byRef.size,
     });
     return {
       worktrees: sortWorktrees(worktrees, defaultBranch, commitDates),
       refs: sortBranches(refs, defaultBranch),
       lastFetchedAt,
       worktreeDates: commitDates,
+      aheadBehind,
     };
   }
 
@@ -393,6 +425,7 @@ function worktreeItem(
   isMain: boolean,
   base: BaseSpec | undefined,
   committedAt: number | undefined,
+  position: RowAheadBehind,
 ): vscode.TreeItem {
   const label = worktree.branch ?? `detached @ ${(worktree.head ?? '').slice(0, 7)}`;
   const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
@@ -402,13 +435,13 @@ function worktreeItem(
   const location = isMain ? 'main worktree' : displayPath(repo.root, worktree.path);
   // Age of the latest commit, so the newest-first order is visible.
   const age = committedAt === undefined ? undefined : formatAge(committedAt, Date.now());
-  item.description = [isBase ? 'comparison base' : undefined, location, age].filter(Boolean).join(' · ');
-  item.tooltip = worktree.path;
+  item.description = [isBase ? 'comparison base' : undefined, aheadBehindText(position.counts), location, age].filter(Boolean).join(' · ');
+  item.tooltip = withAheadBehindTooltip(worktree.path, position);
   item.contextValue = `comparable.worktree${isMain ? '.main' : ''}${isBase ? '.base' : ''}`;
   return item;
 }
 
-function branchItem(repo: RepoInfo, ref: RefEntry, checkedOutIn: string | undefined, base: BaseSpec | undefined): vscode.TreeItem {
+function branchItem(repo: RepoInfo, ref: RefEntry, checkedOutIn: string | undefined, base: BaseSpec | undefined, position: RowAheadBehind): vscode.TreeItem {
   const item = new vscode.TreeItem(ref.name, vscode.TreeItemCollapsibleState.None);
   const isBase = baseMatches(base, { ref: ref.name });
   item.id = `branch:${repo.commonDir}:${ref.kind}:${ref.name}`;
@@ -416,10 +449,21 @@ function branchItem(repo: RepoInfo, ref: RefEntry, checkedOutIn: string | undefi
   const checkedOut = checkedOutIn !== undefined ? `in ${checkedOutIn === repo.root ? 'main worktree' : path.basename(checkedOutIn)}` : undefined;
   const detail = checkedOut ?? (ref.upstream !== undefined ? `→ ${ref.upstream}` : undefined);
   const age = ref.committedAt === undefined ? undefined : formatAge(ref.committedAt, Date.now());
-  item.description = [isBase ? 'comparison base' : undefined, detail, age].filter(Boolean).join(' · ');
-  item.tooltip = `${ref.name} @ ${ref.sha}${checkedOutIn !== undefined ? `\nchecked out in ${checkedOutIn}` : ''}`;
+  item.description = [isBase ? 'comparison base' : undefined, aheadBehindText(position.counts), detail, age].filter(Boolean).join(' · ');
+  item.tooltip = withAheadBehindTooltip(`${ref.name} @ ${ref.sha}${checkedOutIn !== undefined ? `\nchecked out in ${checkedOutIn}` : ''}`, position);
   item.contextValue = `comparable.branch.${ref.kind}${checkedOutIn !== undefined ? '.checkedOut' : ''}${isBase ? '.base' : ''}`;
   return item;
+}
+
+/** A row's commit counts and what they are relative to (both undefined when unavailable). */
+interface RowAheadBehind {
+  readonly counts: AheadBehind | undefined;
+  readonly baseLabel: string | undefined;
+}
+
+function withAheadBehindTooltip(tooltip: string, position: RowAheadBehind): string {
+  const line = position.baseLabel === undefined ? undefined : aheadBehindTooltip(position.counts, position.baseLabel);
+  return line === undefined ? tooltip : `${tooltip}\n${line}`;
 }
 
 /** Paths inside the repo are shown relative (`.claude/worktrees/x`); others with `~` for home. */

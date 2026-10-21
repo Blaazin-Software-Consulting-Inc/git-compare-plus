@@ -4,7 +4,7 @@
  * exactly as the extension does. Catches format drift that the parser unit tests cannot.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -81,6 +81,63 @@ describe('GitCli against a real repository', () => {
       ['renamed', 'new-name.txt', 'old-name.txt'],
       ['deleted', 'remove.txt', 'remove.txt'],
     ]);
+    // Line counts: untracked from disk, the rest from `git diff --numstat` of the same sides.
+    expect(result?.files.map((f) => [f.path, f.lines])).toEqual([
+      ['brand-new.txt', { added: 1, deleted: 0, binary: false }],
+      ['edit.txt', { added: 1, deleted: 1, binary: false }],
+      ['new-name.txt', { added: 0, deleted: 0, binary: false }],
+      ['remove.txt', { added: 0, deleted: 1, binary: false }],
+    ]);
+  });
+
+  it('hashes files on disk exactly as git hash-object does; skips directories and missing files', async () => {
+    const cli = new GitCli('git', recordingLogger());
+    writeFileSync(path.join(worktreeRoot, 'hash-me.txt'), 'some content\n');
+    symlinkSync('hash-me.txt', path.join(worktreeRoot, 'link'));
+    mkdirSync(path.join(worktreeRoot, 'a-dir'));
+    const hashes = await cli.hashWorkingFiles(worktreeRoot, ['hash-me.txt', 'link', 'a-dir', 'missing.txt']);
+    expect(hashes.get('hash-me.txt')).toBe(git(worktreeRoot, 'hash-object', 'hash-me.txt').trim());
+    // A symlink's blob is its target path, as git stores it.
+    expect(hashes.get('link')).toBe(execFileSync('git', ['hash-object', '--stdin'], { input: 'hash-me.txt', encoding: 'utf8' }).trim());
+    expect([...hashes.keys()].sort()).toEqual(['hash-me.txt', 'link']);
+    rmSync(path.join(worktreeRoot, 'hash-me.txt'));
+    rmSync(path.join(worktreeRoot, 'link'));
+    rmSync(path.join(worktreeRoot, 'a-dir'), { recursive: true });
+  });
+
+  it('fingerprints survive committing a file unchanged, and change when it is edited', async () => {
+    const subject = (includeUncommitted: boolean): Subject => ({ kind: 'worktree', root: worktreeRoot, label: 'feature', includeUncommitted });
+    writeFileSync(path.join(worktreeRoot, 'reviewed.txt'), 'looked at this\n');
+    const [onDisk] = await compare(subject(true), { kind: 'ref', ref: 'main' });
+    const before = onDisk?.files.find((f) => f.path === 'reviewed.txt')?.fingerprint;
+    expect(before).toMatch(/^->[0-9a-f]{40}$/);
+
+    git(worktreeRoot, 'add', 'reviewed.txt');
+    git(worktreeRoot, 'commit', '-q', '-m', 'commit what was reviewed');
+    const [committed] = await compare(subject(false), { kind: 'ref', ref: 'main' });
+    expect(committed?.files.find((f) => f.path === 'reviewed.txt')?.fingerprint).toBe(before);
+
+    writeFileSync(path.join(worktreeRoot, 'reviewed.txt'), 'looked at this\nthen edited\n');
+    const [edited] = await compare(subject(true), { kind: 'ref', ref: 'main' });
+    expect(edited?.files.find((f) => f.path === 'reviewed.txt')?.fingerprint).not.toBe(before);
+    // Modified files carry both sides.
+    expect(edited?.files.find((f) => f.path === 'edit.txt')?.fingerprint).toMatch(/^[0-9a-f]{40}>[0-9a-f]{40}$/);
+
+    git(worktreeRoot, 'checkout', '--', 'reviewed.txt');
+    git(worktreeRoot, 'reset', '-q', '--hard', 'HEAD~1');
+    writeFileSync(path.join(worktreeRoot, 'edit.txt'), 'v2 uncommitted\n');
+    writeFileSync(path.join(worktreeRoot, 'brand-new.txt'), 'untracked\n');
+  });
+
+  it('reports binary files as binary, not as line counts', async () => {
+    writeFileSync(path.join(worktreeRoot, 'blob.bin'), Buffer.from([0, 1, 2, 0, 10]));
+    const [result] = await compare({ kind: 'worktree', root: worktreeRoot, label: 'feature', includeUncommitted: true }, { kind: 'ref', ref: 'main' });
+    expect(result?.files.find((f) => f.path === 'blob.bin')?.lines).toEqual({ added: 0, deleted: 0, binary: true });
+    git(worktreeRoot, 'add', 'blob.bin');
+    const [staged] = await compare({ kind: 'worktree', root: worktreeRoot, label: 'feature', includeUncommitted: true }, { kind: 'ref', ref: 'main' });
+    expect(staged?.files.find((f) => f.path === 'blob.bin')).toMatchObject({ status: 'added', lines: { binary: true } });
+    git(worktreeRoot, 'rm', '-q', '--cached', 'blob.bin');
+    rmSync(path.join(worktreeRoot, 'blob.bin'));
   });
 
   it('compares the branch (committed only) from the main worktree', async () => {
@@ -151,6 +208,23 @@ describe('GitCli against a real repository', () => {
     expect(result?.excludedUncommitted.base).toBe(1);
     expect(result?.files.map((f) => f.path)).not.toContain('keep.txt');
     git(repoRoot, 'checkout', '--', 'keep.txt');
+  });
+
+  it('lists only the commits since the branch point, newest first', async () => {
+    const [result] = await compare({ kind: 'ref', ref: 'feature', label: 'feature' }, { kind: 'ref', ref: 'main' });
+    expect(result?.commits?.entries.map((c) => c.subject)).toEqual(['feature work']);
+    expect(result?.commits?.entries[0]).toMatchObject({ author: 't', parents: [expect.stringMatching(/^[0-9a-f]{40}$/)] });
+    expect(result?.commits?.truncated).toBe(false);
+  });
+
+  it('counts ahead/behind the same way in one walk and per revision', async () => {
+    const cli = new GitCli('git', recordingLogger());
+    const mainSha = (await cli.resolveCommit(repoRoot, 'main')) ?? '';
+    const all = await cli.aheadBehindAllRefs(repoRoot, mainSha);
+    // feature: 1 own commit; main moved on by 1 after the branch point.
+    expect(all?.get('feature')).toEqual({ ahead: 1, behind: 1 });
+    expect(all?.get('main')).toEqual({ ahead: 0, behind: 0 });
+    expect(await cli.aheadBehind(repoRoot, mainSha, 'feature')).toEqual({ ahead: 1, behind: 1 });
   });
 
   it('reads commit dates for refs and worktree HEADs', async () => {

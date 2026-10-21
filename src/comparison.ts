@@ -22,14 +22,27 @@
  *   A base that includes uncommitted edits is a tree, not a commit, so it has no merge base; the
  *   effective mode is then forced to `direct` and reported on the result.
  *
+ * Line stats: each file carries `lines` (+/−) from `git diff --numstat` of the same two sides, or
+ * from the file's bytes for untracked files. Best-effort: if they cannot be computed the files are
+ * still listed, without counts (logged at WARN), because the file list is what the review needs.
+ *
+ * Fingerprints: each file also carries `fingerprint` (review/fingerprints.ts), the identity of its
+ * diff that "reviewed" marks are stored against. Best-effort in the same way as line stats.
+ *
+ * Commits: `commits` lists the commits the comparison covers, `<left>..<subject>` (newest first,
+ * capped at COMMIT_LIMIT): since the branch point in `merge-base` mode, or the subject's commits
+ * the base lacks in `direct` mode. Uncommitted edits are not commits and never appear. Absent when
+ * the base is a snapshot (a tree has no history) or when git failed (WARN; best-effort).
+ *
  * Purity: no `vscode` import. Git is reached through `ComparisonPort` (implemented by GitCli), so
  * this module is unit-tested with a fake port.
  *
  * See also: src/git/gitCli.ts, src/views/changesHeader.ts (how these choices are shown).
  */
 import * as path from 'node:path';
-import type { ChangedFile } from './git/parsers';
+import type { ChangedFile, CommitEntry, LineStats } from './git/parsers';
 import type { Logger } from './logger';
+import { attachFingerprints, type FingerprintPort } from './review/fingerprints';
 
 /** A git repository, identified by its main worktree. Linked worktrees belong to their repo. */
 export interface RepoInfo {
@@ -83,15 +96,33 @@ export interface ComparisonResult {
   readonly excludedUncommitted: { readonly subject?: number; readonly base?: number };
   /** Sorted by path. */
   readonly files: readonly ChangedFile[];
+  /** Commits the comparison covers; undefined when not applicable or unavailable (see module doc). */
+  readonly commits?: CommitList;
   readonly errorMessage?: string;
 }
 
+/** Commits of one comparison, newest first. */
+export interface CommitList {
+  readonly entries: readonly CommitEntry[];
+  /** More than COMMIT_LIMIT commits exist; only the newest COMMIT_LIMIT are listed. */
+  readonly truncated: boolean;
+}
+
+/**
+ * Commits listed per comparison. A review rarely spans more; a long-lived branch compared with an
+ * old base could have thousands, and the list is redrawn on every automatic refresh.
+ */
+export const COMMIT_LIMIT = 200;
+
 /** Git operations the comparison needs. Implemented by GitCli; faked in tests. */
-export interface ComparisonPort {
+export interface ComparisonPort extends FingerprintPort {
   defaultBranch(cwd: string): Promise<string | undefined>;
   mergeBase(cwd: string, refA: string, refB: string): Promise<string | undefined>;
   resolveCommit(cwd: string, revision: string): Promise<string | undefined>;
   diffNameStatus(cwd: string, from: string, to?: string): Promise<ChangedFile[]>;
+  diffNumstat(cwd: string, from: string, to?: string): Promise<Map<string, LineStats>>;
+  commitsBetween(cwd: string, from: string, to: string, limit: number): Promise<CommitEntry[]>;
+  untrackedLineStats(root: string, relativePaths: readonly string[]): Promise<Map<string, LineStats>>;
   untracked(cwd: string): Promise<string[]>;
   uncommittedCount(root: string, includeUntracked: boolean): Promise<number>;
   snapshotWorktree(root: string, includeUntracked: boolean): Promise<string>;
@@ -144,6 +175,8 @@ export async function runComparisons(
       subjectRevision: r.subjectRevision,
       excludedUncommitted: r.excludedUncommitted,
       fileCount: r.files.length,
+      lines: totalLineStats(r.files),
+      commitCount: r.commits?.entries.length,
     })),
   });
   return results;
@@ -209,10 +242,28 @@ async function runComparison(
     }
     partial.baseRevision = baseRevision;
 
-    const files = subjectSide.revision === undefined
-      ? await workingTreeChanges(git, cwd, baseRevision, options.includeUntracked)
-      : await git.diffNameStatus(cwd, baseRevision, subjectSide.revision);
-    return finish('compared', sortByPath(files));
+    // Numstat runs alongside name-status: both diff the same sides, and the content diff behind
+    // numstat is the slower of the two, so running it afterwards would roughly double the wait.
+    const [files, numstat, commits] = await Promise.all([
+      subjectSide.revision === undefined
+        ? workingTreeChanges(git, cwd, baseRevision, options.includeUntracked)
+        : git.diffNameStatus(cwd, baseRevision, subjectSide.revision),
+      bestEffortStats(() => git.diffNumstat(cwd, baseRevision, subjectSide.revision), 'diffNumstat', { repo: repo.name, cwd, baseRevision, subjectRevision: subjectSide.revision }, options.logger),
+      // A snapshot base is a tree with no history, so there is no commit range to list.
+      resolvedBase.tree !== undefined
+        ? undefined
+        : commitList(git, cwd, baseRevision, subjectSide.revision ?? 'HEAD', { repo: repo.name }, options.logger),
+    ]);
+    partial.commits = commits;
+    const untrackedPaths = files.filter((f) => f.status === 'untracked').map((f) => f.path);
+    const logContext = { repo: repo.name, cwd, baseRevision, subjectRevision: subjectSide.revision, fileCount: files.length };
+    const [untrackedStats, fingerprinted] = await Promise.all([
+      untrackedPaths.length === 0
+        ? new Map<string, LineStats>()
+        : bestEffortStats(() => git.untrackedLineStats(cwd, untrackedPaths), 'untrackedLineStats', { ...logContext, untrackedCount: untrackedPaths.length }, options.logger),
+      withFingerprints(git, cwd, files, baseRevision, subjectSide.revision, logContext, options.logger),
+    ]);
+    return finish('compared', sortByPath(attachLineStats(fingerprinted, numstat, untrackedStats)));
   } catch (error) {
     options.logger.error('comparison failed', error, {
       function: 'runComparison',
@@ -312,6 +363,100 @@ function skipped(
     base,
   });
   return finish('ref_missing');
+}
+
+/**
+ * Run a line-stats query; on failure log WARN (degraded result: files without counts) and return
+ * an empty map. Stats never fail the comparison itself.
+ */
+async function bestEffortStats(
+  query: () => Promise<Map<string, LineStats>>,
+  operation: string,
+  context: Record<string, unknown>,
+  logger: Logger,
+): Promise<Map<string, LineStats>> {
+  try {
+    return await query();
+  } catch (error) {
+    logger.warn('line stats unavailable; showing files without counts', {
+      function: 'bestEffortStats',
+      operation,
+      ...context,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    return new Map();
+  }
+}
+
+/** List the commits `from..to`; on failure log WARN and return undefined (no Commits section). */
+async function commitList(
+  git: ComparisonPort,
+  cwd: string,
+  from: string,
+  to: string,
+  context: Record<string, unknown>,
+  logger: Logger,
+): Promise<CommitList | undefined> {
+  try {
+    // One extra to learn whether the list was cut off, without a separate count query.
+    const entries = await git.commitsBetween(cwd, from, to, COMMIT_LIMIT + 1);
+    return { entries: entries.slice(0, COMMIT_LIMIT), truncated: entries.length > COMMIT_LIMIT };
+  } catch (error) {
+    logger.warn('commit list unavailable; comparison shown without it', {
+      function: 'commitList',
+      cwd,
+      from,
+      to,
+      ...context,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
+/**
+ * Attach fingerprints; on failure log WARN (degraded: files cannot be marked reviewed this run)
+ * and return the files unchanged.
+ */
+async function withFingerprints(
+  git: FingerprintPort,
+  cwd: string,
+  files: readonly ChangedFile[],
+  baseRevision: string,
+  subjectRevision: string | undefined,
+  context: Record<string, unknown>,
+  logger: Logger,
+): Promise<readonly ChangedFile[]> {
+  try {
+    return await attachFingerprints(git, cwd, files, baseRevision, subjectRevision);
+  } catch (error) {
+    logger.warn('fingerprints unavailable; files cannot be marked reviewed', {
+      function: 'withFingerprints',
+      ...context,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    return files;
+  }
+}
+
+// Untracked files are not in the diff, so their counts come from the separate map. A path missing
+// from both keeps `lines` undefined (unknown), which the view shows as no count rather than "+0".
+function attachLineStats(files: readonly ChangedFile[], numstat: ReadonlyMap<string, LineStats>, untracked: ReadonlyMap<string, LineStats>): ChangedFile[] {
+  return files.map((file) => {
+    const lines = numstat.get(file.path) ?? untracked.get(file.path);
+    return lines === undefined ? file : { ...file, lines };
+  });
+}
+
+/** Totals over files that have counts; binary and unknown files contribute nothing. */
+export function totalLineStats(files: readonly ChangedFile[]): { readonly added: number; readonly deleted: number } {
+  let added = 0;
+  let deleted = 0;
+  for (const file of files) {
+    added += file.lines?.added ?? 0;
+    deleted += file.lines?.deleted ?? 0;
+  }
+  return { added, deleted };
 }
 
 function sortByPath(files: readonly ChangedFile[]): ChangedFile[] {

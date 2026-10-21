@@ -17,21 +17,33 @@
  * right level with that context. `run` itself logs failures at DEBUG only.
  */
 import { execFile } from 'node:child_process';
-import { copyFile, mkdtemp, rm, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { copyFile, lstat, mkdtemp, readFile, readlink, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
+import type { AheadBehind, AheadBehindPort } from '../aheadBehind';
 import type { ComparisonPort } from '../comparison';
 import type { Logger } from '../logger';
 import {
+  COMMIT_LOG_FORMAT,
   REF_LIST_FORMAT,
   countStatusEntries,
+  lineStatsOfContent,
+  parseAheadBehindRefs,
+  parseCommitLog,
   parseCommitDates,
   parseNameStatusZ,
   parseNulList,
+  parseLeftRightCount,
+  parseLsTreeZ,
+  parseNumstatZ,
   parseRefList,
   parseWorktreeList,
   type ChangedFile,
+  type CommitEntry,
+  type LineStats,
   type RefEntry,
   type WorktreeEntry,
 } from './parsers';
@@ -45,6 +57,15 @@ const COMMAND_TIMEOUT_MS = 30_000;
 // Fetching 10+ remotes over a VPN can legitimately take a while; still bounded so a hung
 // connection cannot leave the progress spinner up forever.
 const FETCH_TIMEOUT_MS = 120_000;
+// Untracked files above this size get no line count: reading a multi-MB generated file or dump to
+// show "+40000" is not worth the extension-host memory, and the file is still listed.
+const MAX_UNTRACKED_STATS_BYTES = 2 * 1024 * 1024;
+// Files read at once (line stats, content hashes); bounded so a worktree with thousands of new
+// files cannot hit EMFILE.
+const FILE_READ_CONCURRENCY = 16;
+// Paths per `git ls-tree` call: keeps the argument list well under the OS limit (~256 KB on macOS,
+// 32 KB on Windows) for deep paths.
+const LS_TREE_PATHS_PER_CALL = 200;
 
 /** A git command exited non-zero or could not be started. */
 export class GitCommandError extends Error {
@@ -58,7 +79,7 @@ export class GitCommandError extends Error {
 }
 
 /** Git operations used by the extension. One instance per window, bound to one git binary. */
-export class GitCli implements ComparisonPort {
+export class GitCli implements ComparisonPort, AheadBehindPort {
   /**
    * @param gitPath - git binary; the built-in git extension's resolved path so both agree.
    * @param logger - receives DEBUG lines per command (args, duration).
@@ -139,6 +160,99 @@ export class GitCli implements ComparisonPort {
   async diffNameStatus(cwd: string, from: string, to?: string): Promise<ChangedFile[]> {
     const revisions = to === undefined ? [from] : [from, to];
     return parseNameStatusZ(await this.run(cwd, ['diff', '--name-status', '-z', '-M', ...revisions, '--']));
+  }
+
+  /**
+   * Lines added/removed per file for the same diff as `diffNameStatus` (same arguments, same `-M`),
+   * keyed by the subject-side path. Separate call because `--numstat` and `--name-status` cannot be
+   * combined into one parseable output.
+   */
+  async diffNumstat(cwd: string, from: string, to?: string): Promise<Map<string, LineStats>> {
+    const revisions = to === undefined ? [from] : [from, to];
+    return parseNumstatZ(await this.run(cwd, ['diff', '--numstat', '-z', '-M', ...revisions, '--']));
+  }
+
+  /**
+   * Line counts for untracked files (git has no diff for them), read from disk. Files that are
+   * too large or unreadable (deleted since listing) are left out of the map rather than failing.
+   * @param root - worktree root the paths are relative to.
+   * @param relativePaths - repo-relative POSIX paths, as from `untracked`.
+   */
+  async untrackedLineStats(root: string, relativePaths: readonly string[]): Promise<Map<string, LineStats>> {
+    return mapFilesInBatches(relativePaths, (relativePath) => this.readUntrackedStats(path.join(root, relativePath)));
+  }
+
+  /**
+   * Object IDs of `paths` in a commit or tree (`git ls-tree -r -z`), keyed by path. Paths that do
+   * not exist at `revision` are absent from the map. Pathspecs are literal (`GIT_LITERAL_PATHSPECS`),
+   * so a file named `*.ts` cannot match other files.
+   * @param cwd - worktree root; paths are repo-relative, as git diff prints them.
+   */
+  async blobIds(cwd: string, revision: string, paths: readonly string[]): Promise<Map<string, string>> {
+    const ids = new Map<string, string>();
+    for (let start = 0; start < paths.length; start += LS_TREE_PATHS_PER_CALL) {
+      const chunk = paths.slice(start, start + LS_TREE_PATHS_PER_CALL);
+      const output = await this.run(cwd, ['ls-tree', '-r', '-z', revision, '--', ...chunk], { env: { GIT_LITERAL_PATHSPECS: '1' } });
+      for (const [filePath, id] of parseLsTreeZ(output)) {
+        ids.set(filePath, id);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Git blob IDs of files on disk, computed the way `git hash-object` does without filters
+   * (SHA-1 of `blob <size>\0<content>`; a symlink hashes its target path). Equal to the committed
+   * blob ID for a file committed unchanged in a SHA-1 repo without clean filters (e.g. autocrlf).
+   * Paths that cannot be hashed (deleted since listing, directories such as submodules) are absent.
+   */
+  async hashWorkingFiles(root: string, relativePaths: readonly string[]): Promise<Map<string, string>> {
+    return mapFilesInBatches(relativePaths, (relativePath) => this.hashWorkingFile(path.join(root, relativePath)));
+  }
+
+  private async hashWorkingFile(absolutePath: string): Promise<string | undefined> {
+    try {
+      const info = await lstat(absolutePath);
+      if (info.isSymbolicLink()) {
+        return gitBlobId(Buffer.from(await readlink(absolutePath)));
+      }
+      if (!info.isFile()) {
+        return undefined;
+      }
+      // Streamed: changed files include lockfiles and generated bundles; no need to hold them in memory.
+      const hash = createHash('sha1').update(`blob ${info.size}\0`);
+      for await (const chunk of createReadStream(absolutePath)) {
+        hash.update(chunk as Buffer);
+      }
+      return hash.digest('hex');
+    } catch (error) {
+      // Expected race: deleted or replaced between the diff and this read. The file simply has no
+      // fingerprint this time, so it shows as not reviewed until the next refresh.
+      this.logger.debug('working file unreadable for content hash', { function: 'hashWorkingFile', absolutePath, reason: errorMessage(error) });
+      return undefined;
+    }
+  }
+
+  private async readUntrackedStats(absolutePath: string): Promise<LineStats | undefined> {
+    try {
+      if ((await stat(absolutePath)).size > MAX_UNTRACKED_STATS_BYTES) {
+        return undefined;
+      }
+      return lineStatsOfContent(await readFile(absolutePath));
+    } catch (error) {
+      // Expected race: the file was deleted or renamed between `ls-files` and this read. The file
+      // is still listed (the next refresh drops it); it just has no line count this time.
+      this.logger.debug('untracked file unreadable for line stats', { function: 'readUntrackedStats', absolutePath, reason: errorMessage(error) });
+      return undefined;
+    }
+  }
+
+  /**
+   * Commits reachable from `to` but not from `from` (`git log from..to`), newest first, at most
+   * `limit`. `to` may be `HEAD`, resolved in `cwd` (a worktree's own checkout).
+   */
+  async commitsBetween(cwd: string, from: string, to: string, limit: number): Promise<CommitEntry[]> {
+    return parseCommitLog(await this.run(cwd, ['log', '-z', `--format=${COMMIT_LOG_FORMAT}`, `--max-count=${limit}`, `${from}..${to}`, '--']));
   }
 
   /**
@@ -275,6 +389,34 @@ export class GitCli implements ComparisonPort {
     await this.run(cwd, ['branch', '-D', '--', name]);
   }
 
+  /**
+   * Ahead/behind of every local and remote branch against `baseSha`, in one history walk
+   * (`%(ahead-behind:…)`, git 2.41+). Keyed by short ref name.
+   * @returns undefined when this git does not know the atom (it rejects the format with exit 128);
+   *   the caller then counts per branch. Other failures throw.
+   */
+  async aheadBehindAllRefs(cwd: string, baseSha: string): Promise<Map<string, AheadBehind> | undefined> {
+    try {
+      return parseAheadBehindRefs(
+        await this.run(cwd, ['for-each-ref', `--format=%(refname)%00%(refname:short)%00%(ahead-behind:${baseSha})`, 'refs/heads', 'refs/remotes']),
+      );
+    } catch (error) {
+      if (error instanceof GitCommandError && /unknown field name|ahead-behind/i.test(error.details.stderr)) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  /** Ahead/behind of one revision against `baseSha` (`rev-list --left-right --count base...rev`). */
+  async aheadBehind(cwd: string, baseSha: string, revision: string): Promise<AheadBehind> {
+    const counts = parseLeftRightCount(await this.run(cwd, ['rev-list', '--left-right', '--count', `${baseSha}...${revision}`, '--']));
+    if (counts === undefined) {
+      throw new Error(`unexpected rev-list --count output for ${revision}`);
+    }
+    return counts;
+  }
+
   /** Number of commits on `branch` that are not on `base` (`rev-list --count base..branch`). */
   async commitsNotIn(cwd: string, branch: string, base: string): Promise<number> {
     return Number.parseInt((await this.run(cwd, ['rev-list', '--count', `${base}..${branch}`])).trim(), 10);
@@ -366,6 +508,31 @@ function readExecFailure(error: unknown): { exitCode?: number | string; stderr: 
   const code = 'code' in error && (typeof error.code === 'number' || typeof error.code === 'string') ? error.code : undefined;
   const stderr = 'stderr' in error && typeof error.stderr === 'string' ? redactUrlCredentials(error.stderr.slice(0, 2000)) : '';
   return { exitCode: code, stderr };
+}
+
+/**
+ * Run `read` for each path, at most FILE_READ_CONCURRENCY at a time, and collect the defined
+ * results by path. `read` must not reject; it returns `undefined` for a file it cannot handle.
+ */
+async function mapFilesInBatches<T>(paths: readonly string[], read: (relativePath: string) => Promise<T | undefined>): Promise<Map<string, T>> {
+  const results = new Map<string, T>();
+  for (let start = 0; start < paths.length; start += FILE_READ_CONCURRENCY) {
+    const batch = paths.slice(start, start + FILE_READ_CONCURRENCY);
+    await Promise.all(
+      batch.map(async (relativePath) => {
+        const value = await read(relativePath);
+        if (value !== undefined) {
+          results.set(relativePath, value);
+        }
+      }),
+    );
+  }
+  return results;
+}
+
+/** `git hash-object` for an in-memory buffer (SHA-1 object format). */
+function gitBlobId(content: Buffer): string {
+  return createHash('sha1').update(`blob ${content.length}\0`).update(content).digest('hex');
 }
 
 /**

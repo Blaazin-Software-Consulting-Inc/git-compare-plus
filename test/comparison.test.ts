@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  COMMIT_LIMIT,
   baseForcesDirect,
   diffSides,
   runComparisons,
   subjectCwd,
+  totalLineStats,
   type BaseSpec,
   type ComparisonResult,
   type Subject,
@@ -191,6 +193,149 @@ describe('base resolution and failures', () => {
     await runComparisons(fakePort(), [{ repo: repo('a'), subject: worktree('/ws/a') }], DEFAULT, 'merge-base', opts);
     expect(opts.logger.calls.info.map(([m]) => m)).toEqual(['comparison started', 'comparison finished']);
     expect(await runComparisons(fakePort(), [], DEFAULT, 'merge-base', options())).toEqual([]);
+  });
+});
+
+describe('line stats', () => {
+  const modified = { status: 'modified' as const, path: 'a.ts', oldPath: 'a.ts' };
+  const stats = (added: number, deleted: number) => ({ added, deleted, binary: false });
+
+  it('numstats the same two sides as the file list and attaches counts by path', async () => {
+    const git = fakePort({
+      diffNameStatus: vi.fn(async () => [modified]),
+      diffNumstat: vi.fn(async () => new Map([['a.ts', stats(4, 2)]])),
+    });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature/y') }], DEFAULT, 'merge-base', options());
+    expect(git.diffNumstat).toHaveBeenCalledWith('/ws/svc', 'mb', 'sha:feature/y');
+    expect(result?.files[0]?.lines).toEqual(stats(4, 2));
+  });
+
+  it('counts untracked files from disk, only for the untracked ones, against the working tree', async () => {
+    const git = fakePort({
+      diffNameStatus: vi.fn(async () => [modified]),
+      untracked: vi.fn(async () => ['new.ts']),
+      diffNumstat: vi.fn(async () => new Map([['a.ts', stats(1, 1)]])),
+      untrackedLineStats: vi.fn(async () => new Map([['new.ts', stats(9, 0)]])),
+    });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt') }], DEFAULT, 'merge-base', options());
+    expect(git.diffNumstat).toHaveBeenCalledWith('/wt', 'mb', undefined);
+    expect(git.untrackedLineStats).toHaveBeenCalledWith('/wt', ['new.ts']);
+    expect(result?.files.map((f) => [f.path, f.lines])).toEqual([
+      ['a.ts', stats(1, 1)],
+      ['new.ts', stats(9, 0)],
+    ]);
+  });
+
+  it('does not read files from disk when nothing is untracked', async () => {
+    const git = fakePort({ diffNameStatus: vi.fn(async () => [modified]) });
+    await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt') }], DEFAULT, 'merge-base', options());
+    expect(git.untrackedLineStats).not.toHaveBeenCalled();
+  });
+
+  it('still lists the files, without counts, when numstat fails (WARN, not a failed comparison)', async () => {
+    const logger = recordingLogger();
+    const git = fakePort({
+      diffNameStatus: vi.fn(async () => [modified]),
+      diffNumstat: vi.fn(async () => {
+        throw new Error('timed out');
+      }),
+    });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature/y') }], DEFAULT, 'merge-base', { includeUntracked: true, logger });
+    expect(result?.outcome).toBe('compared');
+    expect(result?.files).toEqual([modified]);
+    expect(logger.calls.warn).toEqual([[expect.stringContaining('line stats unavailable'), expect.objectContaining({ operation: 'diffNumstat', reason: 'timed out' })]]);
+  });
+
+  it('still lists untracked files when reading them fails', async () => {
+    const git = fakePort({
+      untracked: vi.fn(async () => ['new.ts']),
+      untrackedLineStats: vi.fn(async () => {
+        throw new Error('EMFILE');
+      }),
+    });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt') }], DEFAULT, 'merge-base', options());
+    expect(result?.files).toEqual([{ status: 'untracked', path: 'new.ts', oldPath: 'new.ts' }]);
+  });
+
+  it('attaches fingerprints from the same two sides', async () => {
+    const git = fakePort({
+      diffNameStatus: vi.fn(async () => [modified]),
+      blobIds: vi.fn(async (_cwd: string, revision: string) => new Map([['a.ts', revision === 'mb' ? 'L' : 'R']])),
+    });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature/y') }], DEFAULT, 'merge-base', options());
+    expect(result?.files[0]?.fingerprint).toBe('L>R');
+  });
+
+  it('still lists the files, without fingerprints, when fingerprinting fails (WARN)', async () => {
+    const logger = recordingLogger();
+    const git = fakePort({
+      diffNameStatus: vi.fn(async () => [modified]),
+      hashWorkingFiles: vi.fn(async () => {
+        throw new Error('EACCES');
+      }),
+    });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt') }], DEFAULT, 'merge-base', { includeUntracked: true, logger });
+    expect(result?.outcome).toBe('compared');
+    expect(result?.files).toEqual([modified]);
+    expect(logger.calls.warn).toEqual([[expect.stringContaining('fingerprints unavailable'), expect.objectContaining({ reason: 'EACCES' })]]);
+  });
+
+  it('totals skip binary and unknown files', () => {
+    expect(
+      totalLineStats([
+        { ...modified, lines: stats(3, 1) },
+        { ...modified, path: 'b', lines: { added: 0, deleted: 0, binary: true } },
+        { ...modified, path: 'c' },
+        { ...modified, path: 'd', lines: stats(2, 5) },
+      ]),
+    ).toEqual({ added: 5, deleted: 6 });
+    expect(totalLineStats([])).toEqual({ added: 0, deleted: 0 });
+  });
+});
+
+describe('commits', () => {
+  const commit = (sha: string) => ({ sha, parents: ['p'], author: 'a', authoredAt: 1, subject: sha });
+
+  it('lists merge-base..branch tip for a branch, asking for one more than the limit', async () => {
+    const git = fakePort({ commitsBetween: vi.fn(async () => [commit('c2'), commit('c1')]) });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature/y') }], DEFAULT, 'merge-base', options());
+    expect(git.commitsBetween).toHaveBeenCalledWith('/ws/svc', 'mb', 'sha:feature/y', COMMIT_LIMIT + 1);
+    expect(result?.commits).toEqual({ entries: [commit('c2'), commit('c1')], truncated: false });
+  });
+
+  it("uses the worktree's own HEAD when uncommitted edits are included, and the base commit in direct mode", async () => {
+    const git = fakePort();
+    await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt') }], DEFAULT, 'direct', options());
+    expect(git.commitsBetween).toHaveBeenCalledWith('/wt', 'sha:origin/master', 'HEAD', COMMIT_LIMIT + 1);
+  });
+
+  it('marks the list truncated past the limit and keeps only the newest COMMIT_LIMIT', async () => {
+    const many = Array.from({ length: COMMIT_LIMIT + 1 }, (_, i) => commit(`c${i}`));
+    const git = fakePort({ commitsBetween: vi.fn(async () => many) });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('x') }], DEFAULT, 'merge-base', options());
+    expect(result?.commits?.truncated).toBe(true);
+    expect(result?.commits?.entries).toHaveLength(COMMIT_LIMIT);
+    expect(result?.commits?.entries[0]?.sha).toBe('c0');
+  });
+
+  it('has no commit list when the base is a snapshot (a tree has no history)', async () => {
+    const git = fakePort();
+    const base: BaseSpec = { kind: 'worktree', root: '/ws/svc', label: 'main', includeUncommitted: true };
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('x') }], base, 'direct', options());
+    expect(git.commitsBetween).not.toHaveBeenCalled();
+    expect(result?.commits).toBeUndefined();
+  });
+
+  it('still compares when listing commits fails (WARN, no list)', async () => {
+    const logger = recordingLogger();
+    const git = fakePort({
+      commitsBetween: vi.fn(async () => {
+        throw new Error('shallow clone');
+      }),
+    });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('x') }], DEFAULT, 'merge-base', { includeUntracked: true, logger });
+    expect(result).toMatchObject({ outcome: 'compared', commits: undefined });
+    expect(logger.calls.warn).toEqual([[expect.stringContaining('commit list unavailable'), expect.objectContaining({ reason: 'shallow clone' })]]);
   });
 });
 

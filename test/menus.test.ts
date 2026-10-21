@@ -54,3 +54,31 @@ describe('context menu visibility', () => {
     expect(actual.sort()).toEqual([...expected].sort());
   });
 });
+
+describe('commit context menu (Changes view)', () => {
+  it.each(['branchCompare.openCommit', 'branchCompare.compareWithCommit', 'branchCompare.copyCommitId'])('%s is shown on commits only', (command) => {
+    expect(shown(command, 'commit')).toBe(true);
+    expect(shown(command, 'changedFile')).toBe(false);
+    expect(Object.values(values).some((value) => shown(command, value))).toBe(false);
+  });
+});
+
+describe('changed-file context menu (Changes view)', () => {
+  const statuses = ['added', 'untracked', 'modified', 'renamed', 'deleted'] as const;
+  const shownFor = (command: string) => statuses.filter((status) => shown(command, `changedFile.${status}`));
+
+  it('Open File is hidden only for deleted files', () => {
+    expect(shownFor('branchCompare.openFile')).toEqual(['added', 'untracked', 'modified', 'renamed']);
+  });
+
+  it('Open File at Base is hidden for added and untracked files', () => {
+    expect(shownFor('branchCompare.openFileAtBase')).toEqual(['modified', 'renamed', 'deleted']);
+  });
+
+  it('neither appears on commits or Repositories items', () => {
+    for (const command of ['branchCompare.openFile', 'branchCompare.openFileAtBase']) {
+      expect(shown(command, 'commit')).toBe(false);
+      expect(Object.values(values).some((value) => shown(command, value))).toBe(false);
+    }
+  });
+});

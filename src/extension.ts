@@ -24,6 +24,7 @@ import { BaseStore, baseLabel, baseMatches } from './baseStore';
 import {
   baseForcesDirect,
   diffSides,
+  subjectCwd,
   runComparisons,
   type BaseSpec,
   type CompareMode,
@@ -34,12 +35,16 @@ import {
 } from './comparison';
 import { GitActions } from './gitActions';
 import { GitCli } from './git/gitCli';
-import type { WorktreeEntry } from './git/parsers';
+import type { ChangedFile, WorktreeEntry } from './git/parsers';
 import { createChannelLogger, type Logger } from './logger';
 import { formatAge, isFetchStale, selectionTargets } from './operations';
 import { discoverRepos, getGitApi, type GitApi } from './repoDiscovery';
+import { ReviewStore } from './review/reviewStore';
+import { groupReviewToggles } from './review/reviewToggles';
 import type { BaseFetchInfo, ComparisonSetup } from './views/changesHeader';
-import { ChangesProvider, type ChangesNode } from './views/changesView';
+import { swapSides } from './swapSides';
+import { ChangesProvider, type ChangesLayout, type ChangesNode } from './views/changesView';
+import { commitTitle } from './views/commitText';
 import { CONTENT_SCHEME, RevisionContentProvider, sideToUri } from './views/content';
 import { RepositoriesProvider, toComparisonTarget, worktreeLabel, type RepoTreeNode } from './views/repositoriesView';
 
@@ -80,8 +85,20 @@ export function activate(context: vscode.ExtensionContext): void {
     canSelectMany: true,
   });
   repositories.attach(repositoriesView);
-  const changes = new ChangesProvider();
-  const changesView = vscode.window.createTreeView('branchCompare.changes', { treeDataProvider: changes, showCollapseAll: true });
+  const reviews = new ReviewStore(context.workspaceState);
+  const changes = new ChangesProvider(
+    (result, file) => reviews.isReviewed(result.repo.commonDir, file.path, file.fingerprint),
+    context.extensionUri,
+    () => settings().changesLayout,
+  );
+  // Drives which of View as Tree / View as List the Changes title bar shows.
+  void vscode.commands.executeCommand('setContext', 'branchCompare.changesLayout', settings().changesLayout);
+  // manageCheckboxStateManually: only file rows have checkboxes; repo rows must not cascade.
+  const changesView = vscode.window.createTreeView('branchCompare.changes', {
+    treeDataProvider: changes,
+    showCollapseAll: true,
+    manageCheckboxStateManually: true,
+  });
   changes.attach(changesView);
 
   const commands = new CompareCommands(getGit, repositories, changes, bases, logger);
@@ -99,6 +116,7 @@ export function activate(context: vscode.ExtensionContext): void {
     changesView,
     repositoriesView,
     vscode.window.registerFileDecorationProvider(changes),
+    changesView.onDidChangeCheckboxState((event) => void markReviewed(event.items, reviews, changes, logger)),
     vscode.workspace.registerTextDocumentContentProvider(CONTENT_SCHEME, new RevisionContentProvider(getGit, logger)),
     vscode.workspace.onDidChangeWorkspaceFolders(() => repositories.refresh()),
     register('branchCompare.refresh', () => repositories.refresh()),
@@ -110,6 +128,20 @@ export function activate(context: vscode.ExtensionContext): void {
     register('branchCompare.openWorktree', (node: RepoTreeNode) => commands.openWorktree(node), logger),
     register('branchCompare.openChange', (node: ChangesNode) => commands.openChange(node), logger),
     register('branchCompare.openAllChanges', () => commands.openAllChanges(), logger),
+    register('branchCompare.viewAsTree', () => setChangesLayout('tree'), logger),
+    register('branchCompare.viewAsList', () => setChangesLayout('list'), logger),
+    register('branchCompare.swapSides', () => commands.swapSides(), logger),
+    register('branchCompare.openFile', (node: ChangesNode) => commands.openFileSide(node, 'right'), logger),
+    register('branchCompare.openFileAtBase', (node: ChangesNode) => commands.openFileSide(node, 'left'), logger),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('branchCompare.changesLayout')) {
+        void vscode.commands.executeCommand('setContext', 'branchCompare.changesLayout', settings().changesLayout);
+        changes.redraw();
+      }
+    }),
+    register('branchCompare.openCommit', (node: ChangesNode) => commands.openCommit(node), logger),
+    register('branchCompare.compareWithCommit', (node: ChangesNode) => commands.compareWithCommit(node), logger),
+    register('branchCompare.copyCommitId', (node: ChangesNode) => commands.copyCommitId(node), logger),
     register('branchCompare.rerun', () => commands.rerun(), logger),
     register('branchCompare.changeBase', () => commands.changeBase(), logger),
     register('branchCompare.toggleUncommitted', () => commands.toggleUncommitted(), logger),
@@ -239,6 +271,48 @@ async function notifyPersistentFailure(
   await extraActions.find((a) => a.title === choice)?.run();
 }
 
+/**
+ * Store the reviewed marks the user just toggled in Changes, then redraw (counts, and reverting a
+ * checkbox that could not be marked). The mark is pinned to the fingerprint of the version that
+ * was on screen; if the file has changed since, the next automatic refresh shows it unreviewed.
+ */
+async function markReviewed(
+  items: ReadonlyArray<readonly [ChangesNode, vscode.TreeItemCheckboxState]>,
+  reviews: ReviewStore,
+  changes: ChangesProvider,
+  logger: Logger,
+): Promise<void> {
+  const toggles = items.flatMap(([node, state]) =>
+    node.kind === 'file'
+      ? [{ commonDir: node.result.repo.commonDir, path: node.file.path, fingerprint: node.file.fingerprint, checked: state === vscode.TreeItemCheckboxState.Checked }]
+      : [],
+  );
+  const { byRepo, unmarkable } = groupReviewToggles(toggles);
+  const now = Date.now();
+  try {
+    for (const [commonDir, marks] of byRepo) {
+      await reviews.set(commonDir, marks.reviewed, true, now);
+      await reviews.set(commonDir, marks.unreviewed, false, now);
+    }
+    logger.info('reviewed marks changed', {
+      function: 'markReviewed',
+      repos: [...byRepo].map(([commonDir, marks]) => ({ commonDir, reviewed: marks.reviewed.map((m) => m.path), unreviewed: marks.unreviewed.map((m) => m.path) })),
+      unmarkable,
+    });
+  } catch (error) {
+    logger.error('saving reviewed marks failed', error, { function: 'markReviewed', toggles });
+    void vscode.window.showErrorMessage(`Git Branch & Worktree Compare: couldn't save reviewed marks: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    // Always redraw: on success to update the counts, otherwise to put the checkboxes back.
+    changes.redraw();
+  }
+  if (unmarkable.length > 0) {
+    void vscode.window.showInformationMessage(
+      `Can't mark ${unmarkable.length === 1 ? unmarkable[0] : `${unmarkable.length} files`} as reviewed: the content couldn't be read. Refresh the comparison and try again.`,
+    );
+  }
+}
+
 /** Nothing to clean up beyond `context.subscriptions`. */
 export function deactivate(): void {}
 
@@ -257,10 +331,26 @@ function register<A extends unknown[]>(id: string, handler: (...args: A) => unkn
   });
 }
 
+/**
+ * Title-bar layout toggle. Saved as a user setting (not per workspace): it is a reading preference.
+ * The configuration listener redraws the view and updates the title-bar context key.
+ */
+async function setChangesLayout(layout: ChangesLayout): Promise<void> {
+  await vscode.workspace.getConfiguration('branchCompare').update('changesLayout', layout, vscode.ConfigurationTarget.Global);
+}
+
 /** User settings read at the start of each comparison. */
-function settings(): { includeUntracked: boolean; includeUncommitted: boolean; mode: CompareMode; staleFetchHours: number; autoRefresh: boolean } {
+function settings(): {
+  includeUntracked: boolean;
+  includeUncommitted: boolean;
+  mode: CompareMode;
+  staleFetchHours: number;
+  autoRefresh: boolean;
+  changesLayout: ChangesLayout;
+} {
   const config = vscode.workspace.getConfiguration('branchCompare');
   return {
+    changesLayout: config.get<string>('changesLayout', 'list') === 'tree' ? 'tree' : 'list',
     autoRefresh: config.get<boolean>('autoRefresh', true),
     staleFetchHours: config.get<number>('staleFetchHours', 24),
     includeUntracked: config.get<boolean>('includeUntracked', true),
@@ -345,7 +435,8 @@ class CompareCommands {
     }
     await this.bases.set(node.repo.commonDir, base);
     this.logger.info('comparison base set', { function: 'setBase', repo: node.repo.name, base });
-    this.repositories.redraw();
+    // Reload, not just redraw: the ahead/behind counts on every row are relative to the base.
+    this.repositories.refreshRepo(node.repo);
   }
 
   /** Back to the repo's default branch. */
@@ -355,7 +446,7 @@ class CompareCommands {
     }
     await this.bases.clear(node.repo.commonDir);
     this.logger.info('comparison base cleared', { function: 'clearBase', repo: node.repo.name });
-    this.repositories.redraw();
+    this.repositories.refreshRepo(node.repo);
   }
 
   /** Open a worktree folder in a new window. */
@@ -383,17 +474,102 @@ class CompareCommands {
     if (first === undefined) {
       return;
     }
-    const entries = nodes.map(({ result, file }) => {
-      const { left, right } = diffSides(result, file);
-      const leftUri = left.kind === 'empty' ? undefined : sideToUri(left, file.oldPath);
-      const rightUri = right.kind === 'empty' ? undefined : sideToUri(right, file.path);
-      // First element labels the entry; prefer the subject side, which exists unless deleted.
-      return [rightUri ?? leftUri, leftUri, rightUri];
-    });
+    const entries = multiDiffEntries(nodes);
     const title = nodes.every((n) => n.result === first.result)
       ? `${first.result.baseLabel ?? 'base'} ↔ ${subjectTitle(first.result.subject)}`
       : 'All repos ↔ base';
     await vscode.commands.executeCommand('vscode.changes', title, entries);
+  }
+
+  /**
+   * Commits group → one commit: open the files it changed (against its first parent) in one
+   * multi-file diff. The comparison on display is left as it is.
+   */
+  async openCommit(node: ChangesNode): Promise<void> {
+    if (node.kind !== 'commit') {
+      return;
+    }
+    const { result, commit } = node;
+    const parent = commit.parents[0];
+    if (parent === undefined) {
+      void vscode.window.showInformationMessage(`${commitTitle(commit)} is the first commit of the history: there is no earlier version to compare it with.`);
+      return;
+    }
+    const cwd = subjectCwd(result);
+    const git = await this.getGit();
+    const files = await git.diffNameStatus(cwd, parent, commit.sha);
+    this.logger.info('commit opened', { function: 'openCommit', repo: result.repo.name, sha: commit.sha, parent, fileCount: files.length });
+    if (files.length === 0) {
+      void vscode.window.showInformationMessage(`${commitTitle(commit)} changes no files.`);
+      return;
+    }
+    // A one-commit comparison: left = first parent, right = the commit, both read from git.
+    const commitResult: ComparisonResult = {
+      repo: result.repo,
+      subject: { kind: 'ref', ref: commit.sha, label: commitTitle(commit) },
+      outcome: 'compared',
+      mode: 'direct',
+      baseLabel: `${commit.sha.slice(0, 7)}^`,
+      baseRevision: parent,
+      subjectRevision: commit.sha,
+      excludedUncommitted: {},
+      files,
+    };
+    await vscode.commands.executeCommand('vscode.changes', commitTitle(commit), multiDiffEntries(files.map((file) => ({ result: commitResult, file }))));
+  }
+
+  /**
+   * Commit context menu: keep what is being reviewed, but compare it with this commit, i.e. show
+   * only what came after it. In a multi-repo comparison this narrows to the commit's repo, since
+   * a commit exists in one repo only.
+   */
+  async compareWithCommit(node: ChangesNode): Promise<void> {
+    const state = this.changes.current();
+    if (node.kind !== 'commit' || state === undefined) {
+      return;
+    }
+    const requests = state.setup.requests.filter((r) => r.repo.commonDir === node.result.repo.commonDir && isSameSubject(r.subject, node.result.subject));
+    await this.run({ ...state.setup, requests, base: { kind: 'ref', ref: node.commit.sha } });
+  }
+
+  /** Commit context menu: put the full SHA on the clipboard. */
+  async copyCommitId(node: ChangesNode): Promise<void> {
+    if (node.kind === 'commit') {
+      await vscode.env.clipboard.writeText(node.commit.sha);
+    }
+  }
+
+  /** Title bar "Swap Sides": review the base against what was being reviewed. */
+  async swapSides(): Promise<void> {
+    const state = this.changes.current();
+    if (state === undefined) {
+      return;
+    }
+    const outcome = swapSides(state.setup, state.results);
+    if ('reason' in outcome) {
+      void vscode.window.showInformationMessage(outcome.reason);
+      return;
+    }
+    this.logger.info('comparison sides swapped', { function: 'swapSides', before: state.setup.base, after: outcome.setup.base });
+    await this.run(outcome.setup);
+  }
+
+  /**
+   * Changed file → Open File (right: the file on disk, editable, or the subject revision) or
+   * Open File at Base (left: the base revision, read-only). The menus hide the side that does
+   * not exist; the empty check covers a stale menu.
+   */
+  async openFileSide(node: ChangesNode, side: 'left' | 'right'): Promise<void> {
+    if (node.kind !== 'file') {
+      return;
+    }
+    const sides = diffSides(node.result, node.file);
+    const source = side === 'left' ? sides.left : sides.right;
+    if (source.kind === 'empty') {
+      void vscode.window.showInformationMessage(`${node.file.path} does not exist on the ${side === 'left' ? 'base' : 'reviewed'} side.`);
+      return;
+    }
+    await vscode.commands.executeCommand('vscode.open', sideToUri(source, side === 'left' ? node.file.oldPath : node.file.path));
   }
 
   /** Recompute the comparison on display (edits since, new commits, a fresh base snapshot). */
@@ -630,6 +806,25 @@ function pickWithFreeText(items: readonly BasePickItem[], title: string): Promis
     });
     quickPick.show();
   });
+}
+
+/**
+ * Entries for `vscode.changes` (one multi-file diff editor): `[label uri, left, right]` per file,
+ * with `undefined` for an empty side (added / deleted).
+ */
+function multiDiffEntries(nodes: readonly { readonly result: ComparisonResult; readonly file: ChangedFile }[]): (vscode.Uri | undefined)[][] {
+  return nodes.map(({ result, file }) => {
+    const { left, right } = diffSides(result, file);
+    const leftUri = left.kind === 'empty' ? undefined : sideToUri(left, file.oldPath);
+    const rightUri = right.kind === 'empty' ? undefined : sideToUri(right, file.path);
+    // First element labels the entry; prefer the subject side, which exists unless deleted.
+    return [rightUri ?? leftUri, leftUri, rightUri];
+  });
+}
+
+/** Same worktree (by path) or same ref (by name). */
+function isSameSubject(a: Subject, b: Subject): boolean {
+  return a.kind === 'worktree' ? b.kind === 'worktree' && a.root === b.root : b.kind === 'ref' && a.ref === b.ref;
 }
 
 /** True when the base IS the subject (comparing something with itself). */
