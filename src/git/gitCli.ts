@@ -34,6 +34,7 @@ import {
   countStatusEntries,
   lineStatsOfContent,
   parseAheadBehindRefs,
+  parseBlameIncremental,
   parseCommitLog,
   parseCommitDates,
   parseNameStatusZ,
@@ -44,6 +45,7 @@ import {
   parseRefList,
   parseTagList,
   parseWorktreeList,
+  type BlameLine,
   type ChangedFile,
   type CommitEntry,
   type LineStats,
@@ -286,6 +288,57 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
     }
   }
 
+  /**
+   * The worktree root containing `directory` (`rev-parse --show-toplevel`), or undefined when it
+   * is not inside a git worktree.
+   */
+  async toplevel(directory: string): Promise<string | undefined> {
+    try {
+      return (await this.run(directory, ['rev-parse', '--show-toplevel'])).trim();
+    } catch (error) {
+      if (error instanceof GitCommandError) {
+        // Expected for files outside any repository (exit 128); also covers a deleted folder.
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Blame `relativePath` as it is in the editor (`--contents -`, the text passed on stdin), so
+   * unsaved edits show as uncommitted lines rather than shifting every line below them.
+   * @param root - worktree root (from `toplevel`).
+   * @returns one entry per line; undefined when git cannot blame the file (untracked, outside HEAD).
+   */
+  async blame(root: string, relativePath: string, contents: string): Promise<BlameLine[] | undefined> {
+    try {
+      return parseBlameIncremental(await this.run(root, ['blame', '--incremental', '--contents', '-', '--', relativePath], { input: contents }));
+    } catch (error) {
+      if (error instanceof GitCommandError && error.details.exitCode === 128) {
+        // Expected: a new file not in HEAD yet ("no such path"), or a file git ignores.
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  /** One commit's metadata (`git log -1`), or undefined when `revision` is not a commit. */
+  async commit(cwd: string, revision: string): Promise<CommitEntry | undefined> {
+    try {
+      return parseCommitLog(await this.run(cwd, ['log', '-1', '-z', `--format=${COMMIT_LOG_FORMAT}`, revision, '--']))[0];
+    } catch (error) {
+      if (error instanceof GitCommandError && error.details.exitCode === 128) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  /** A commit's full message (`git show -s --format=%B`), for the blame hover. */
+  async commitMessage(cwd: string, sha: string): Promise<string> {
+    return this.run(cwd, ['show', '-s', '--format=%B', sha]);
+  }
+
   /** Tags, newest first (by tag or commit date). */
   async tags(cwd: string): Promise<TagEntry[]> {
     return parseTagList(await this.run(cwd, ['for-each-ref', '--sort=-creatordate', `--format=${TAG_LIST_FORMAT}`, 'refs/tags']));
@@ -524,17 +577,20 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
   private async run(
     cwd: string,
     args: readonly string[],
-    options: { readonly env?: Readonly<Record<string, string>>; readonly timeoutMs?: number } = {},
+    options: { readonly env?: Readonly<Record<string, string>>; readonly timeoutMs?: number; readonly input?: string } = {},
   ): Promise<string> {
     const startedAt = Date.now();
     try {
-      const { stdout } = await execFileAsync(this.gitPath, [...args], {
+      const running = execFileAsync(this.gitPath, [...args], {
         cwd,
         encoding: 'utf8',
         maxBuffer: MAX_OUTPUT_BYTES,
         timeout: options.timeoutMs ?? COMMAND_TIMEOUT_MS,
         env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', ...options.env },
       });
+      // Text for commands that read stdin (`blame --contents -`); others get an empty, closed stdin.
+      running.child.stdin?.end(options.input ?? '');
+      const { stdout } = await running;
       this.logger.debug('git command completed', { function: 'run', cwd, args, durationMs: Date.now() - startedAt });
       return stdout;
     } catch (error) {

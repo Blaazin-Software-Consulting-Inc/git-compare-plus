@@ -51,7 +51,7 @@ Replaces the "comparison base" idea, which is hard to explain, with two named si
   every repo row shows `against origin/main`, with **Change Default Against…** on the repo row and
   **Use as Default Against** on worktrees and branches.
 
-### Phase 2: Clear worktree and branch switching (done, awaiting review)
+### Phase 2: Clear worktree and branch switching (done)
 
 GitLens made the difference between switching branches and opening a worktree hard to see. Here
 the outcome is always stated before anything happens.
@@ -68,7 +68,7 @@ the outcome is always stated before anything happens.
 - **Status bar item** showing this window's worktree and branch. Clicking it opens "Go to…",
   listing worktrees and branches with the outcome of picking each one.
 
-### Phase 3: Blame
+### Phase 3: Blame (done, awaiting review)
 
 - Blame for the current line at the end of the line (author, age, message), shown when the
   cursor settles.

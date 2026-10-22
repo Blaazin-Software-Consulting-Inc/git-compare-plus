@@ -17,6 +17,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ChangesAutoRefresh } from './autoRefresh/changesAutoRefresh';
+import { BlameController } from './blame/blameController';
 import { followGitChanges } from './autoRefresh/gitEvents';
 import { stableSignature } from './autoRefresh/scheduling';
 import { RefType, rankBranchCandidates } from './branchCandidates';
@@ -35,7 +36,7 @@ import {
 } from './comparison';
 import { GitActions } from './gitActions';
 import { GitCli } from './git/gitCli';
-import type { ChangedFile, WorktreeEntry } from './git/parsers';
+import type { WorktreeEntry } from './git/parsers';
 import { createChannelLogger, type Logger } from './logger';
 import { formatAge, isFetchStale, selectionTargets } from './operations';
 import { parseDefaultBranchSettings } from './defaultBranch';
@@ -49,11 +50,22 @@ import { pickSide } from './views/sidePicker';
 import { WorktreeStatus } from './views/worktreeStatus';
 import { ChangesProvider, type ChangesLayout, type ChangesNode } from './views/changesView';
 import { commitTitle } from './views/commitText';
+import { multiDiffEntries, openCommitChanges } from './views/commitDiff';
 import { CONTENT_SCHEME, RevisionContentProvider, sideToUri } from './views/content';
 import { RepositoriesProvider, toComparisonTarget, worktreeLabel, type RepoTreeNode } from './views/repositoriesView';
 
-/** Activate: called when the sidebar is opened or a command runs. */
-export function activate(context: vscode.ExtensionContext): void {
+/** What `activate` returns; read by the extension-host smoke test (test/host/suite.cjs). */
+export interface ExtensionApi {
+  /** How long `activate` itself took, ms. */
+  readonly activationMs: number;
+}
+
+/**
+ * Activate: once the editor has finished starting (`onStartupFinished`), so blame is ready when a
+ * file is opened without delaying startup; or earlier if a view or command is used first.
+ */
+export function activate(context: vscode.ExtensionContext): ExtensionApi {
+  const startedAt = Date.now();
   const channel = vscode.window.createOutputChannel('Git Branch & Worktree Compare', { log: true });
   const logger = createChannelLogger(channel, 'BranchCompare');
 
@@ -121,8 +133,10 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   const goTo = new WorktreeStatus(repositories, actions, () => windowFolders(), logger);
+  const blame = new BlameController(getGit, () => blameSettings(), logger);
 
   context.subscriptions.push(
+    blame,
     goTo,
     channel,
     changesView,
@@ -156,6 +170,9 @@ export function activate(context: vscode.ExtensionContext): void {
       if (event.affectsConfiguration('branchCompare.remote') || event.affectsConfiguration('branchCompare.defaultBranches')) {
         repositories.refresh();
       }
+      if (event.affectsConfiguration('branchCompare.blame')) {
+        blame.settingsChanged();
+      }
       if (event.affectsConfiguration('branchCompare.changesLayout')) {
         void vscode.commands.executeCommand('setContext', 'branchCompare.changesLayout', settings().changesLayout);
         changes.redraw();
@@ -178,11 +195,12 @@ export function activate(context: vscode.ExtensionContext): void {
     register('branchCompare.deleteBranch', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => actions.deleteBranches(selectionTargets(node, selection)), logger),
     // Delete key: keybindings pass no arguments, so read the tree's own selection.
     register('branchCompare.deleteSelected', () => actions.deleteSelection(repositoriesView.selection), logger),
-    ...startAutoRefresh(getServices, repositories, repositoriesView, changes, commands, channel, logger),
+    ...startAutoRefresh(getServices, repositories, repositoriesView, changes, commands, blame, channel, logger),
     register('branchCompare.openBranch', (node?: RepoTreeNode) => actions.openBranch(node), logger),
     register('branchCompare.goTo', () => goTo.pick(), logger),
     register('branchCompare.switchBranch', (node?: RepoTreeNode) => actions.switchBranch(node), logger),
   );
+  return { activationMs: Date.now() - startedAt };
 }
 
 // Commits offered by "Search commits…": enough to reach back a few weeks on a busy repo while
@@ -206,6 +224,7 @@ function startAutoRefresh(
   repositoriesView: vscode.TreeView<RepoTreeNode>,
   changes: ChangesProvider,
   commands: CompareCommands,
+  blame: BlameController,
   channel: vscode.LogOutputChannel,
   logger: Logger,
 ): vscode.Disposable[] {
@@ -238,6 +257,8 @@ function startAutoRefresh(
           repoChanged: (commonDir) => {
             void repositories.refreshRepoIfChanged(commonDir);
             changesRefresh.repoChanged(commonDir);
+            // A commit or checkout changes what every line blames to.
+            blame.gitChanged();
           },
           reposChanged: () => repositories.refresh(),
         },
@@ -365,6 +386,12 @@ function register<A extends unknown[]>(id: string, handler: (...args: A) => unkn
  */
 async function setChangesLayout(layout: ChangesLayout): Promise<void> {
   await vscode.workspace.getConfiguration('branchCompare').update('changesLayout', layout, vscode.ConfigurationTarget.Global);
+}
+
+/** Which blame surfaces are on (`branchCompare.blame.*`). */
+function blameSettings(): { currentLine: boolean; statusBar: boolean } {
+  const config = vscode.workspace.getConfiguration('branchCompare.blame');
+  return { currentLine: config.get<boolean>('currentLine', true), statusBar: config.get<boolean>('statusBar', true) };
 }
 
 /** User settings read at the start of each comparison. */
@@ -584,33 +611,7 @@ class CompareCommands {
     if (node.kind !== 'commit') {
       return;
     }
-    const { result, commit } = node;
-    const parent = commit.parents[0];
-    if (parent === undefined) {
-      void vscode.window.showInformationMessage(`${commitTitle(commit)} is the first commit of the history: there is no earlier version to compare it with.`);
-      return;
-    }
-    const cwd = subjectCwd(result);
-    const git = await this.getGit();
-    const files = await git.diffNameStatus(cwd, parent, commit.sha);
-    this.logger.info('commit opened', { function: 'openCommit', repo: result.repo.name, sha: commit.sha, parent, fileCount: files.length });
-    if (files.length === 0) {
-      void vscode.window.showInformationMessage(`${commitTitle(commit)} changes no files.`);
-      return;
-    }
-    // A one-commit comparison: left = first parent, right = the commit, both read from git.
-    const commitResult: ComparisonResult = {
-      repo: result.repo,
-      subject: { kind: 'ref', ref: commit.sha, label: commitTitle(commit), refKind: 'commit' },
-      outcome: 'compared',
-      mode: 'direct',
-      baseLabel: `${commit.sha.slice(0, 7)}^`,
-      baseRevision: parent,
-      subjectRevision: commit.sha,
-      excludedUncommitted: {},
-      files,
-    };
-    await vscode.commands.executeCommand('vscode.changes', commitTitle(commit), multiDiffEntries(files.map((file) => ({ result: commitResult, file }))));
+    await openCommitChanges(await this.getGit(), node.result.repo, subjectCwd(node.result), node.commit, this.logger);
   }
 
   /**
@@ -954,20 +955,6 @@ function pickWithFreeText(items: readonly BasePickItem[], title: string): Promis
       quickPick.dispose();
     });
     quickPick.show();
-  });
-}
-
-/**
- * Entries for `vscode.changes` (one multi-file diff editor): `[label uri, left, right]` per file,
- * with `undefined` for an empty side (added / deleted).
- */
-function multiDiffEntries(nodes: readonly { readonly result: ComparisonResult; readonly file: ChangedFile }[]): (vscode.Uri | undefined)[][] {
-  return nodes.map(({ result, file }) => {
-    const { left, right } = diffSides(result, file);
-    const leftUri = left.kind === 'empty' ? undefined : sideToUri(left, file.oldPath);
-    const rightUri = right.kind === 'empty' ? undefined : sideToUri(right, file.path);
-    // First element labels the entry; prefer the subject side, which exists unless deleted.
-    return [rightUri ?? leftUri, leftUri, rightUri];
   });
 }
 

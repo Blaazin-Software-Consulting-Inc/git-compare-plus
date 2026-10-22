@@ -6,8 +6,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const vscode = require('vscode');
 
-// Generous for slow CI machines; today's local measurement is printed on every run. Includes
-// activating the built-in git extension, which this extension depends on.
+// Generous for slow CI machines; today's local measurement is printed on every run.
 const ACTIVATION_BUDGET_MS = 3000;
 
 exports.run = async function run() {
@@ -15,13 +14,15 @@ exports.run = async function run() {
   const id = `${manifest.publisher}.${manifest.name}`;
   const extension = vscode.extensions.getExtension(id);
   assert.ok(extension, `extension ${id} is not installed in the test host`);
-  // Lazy loading: nothing in the manifest asks VS Code to activate at startup.
-  assert.equal(extension.isActive, false, 'the extension activated before anything used it');
+  // Never during startup: the only activation event is onStartupFinished (blame must be ready
+  // once a file is open, without delaying the editor's start).
+  assert.deepEqual(manifest.activationEvents, ['onStartupFinished'], 'activation events changed: check they cannot delay startup');
 
-  const startedAt = Date.now();
-  await extension.activate();
-  const activationMs = Date.now() - startedAt;
-  process.stdout.write(`host smoke: activation took ${activationMs} ms (budget ${ACTIVATION_BUDGET_MS} ms)\n`);
+  const api = await extension.activate();
+  // activate() reports its own duration; by now it has usually already run after startup.
+  const activationMs = api.activationMs;
+  assert.equal(typeof activationMs, 'number', 'activate() did not report its duration');
+  process.stdout.write(`host smoke: activate() took ${activationMs} ms (budget ${ACTIVATION_BUDGET_MS} ms)\n`);
   assert.ok(activationMs <= ACTIVATION_BUDGET_MS, `activation took ${activationMs} ms, over the ${ACTIVATION_BUDGET_MS} ms budget`);
 
   const registered = new Set(await vscode.commands.getCommands(true));

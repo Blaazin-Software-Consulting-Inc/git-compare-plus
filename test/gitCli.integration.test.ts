@@ -266,6 +266,25 @@ describe('GitCli against a real repository', () => {
     }
   });
 
+  it('blames the editor text: committed lines by commit, unsaved lines as uncommitted', async () => {
+    const cli = new GitCli('git', recordingLogger());
+    expect(await cli.toplevel(path.join(worktreeRoot))).toBe(worktreeRoot);
+    expect(await cli.toplevel(sandbox)).toBeUndefined();
+
+    // old-name.txt was renamed to new-name.txt in the feature commit, content unchanged.
+    const lines = await cli.blame(worktreeRoot, 'new-name.txt', 'rename me\nline2\nan unsaved edit\n');
+    expect(lines?.map((l) => l.commit.uncommitted)).toEqual([false, false, true]);
+    expect(lines?.[0]).toMatchObject({ path: 'old-name.txt', originalLine: 1, commit: { author: 't', summary: 'base' } });
+
+    // A file git has never seen cannot be blamed.
+    expect(await cli.blame(worktreeRoot, 'never-committed.txt', 'x\n')).toBeUndefined();
+
+    const sha = lines?.[0]?.commit.sha ?? '';
+    expect(await cli.commit(worktreeRoot, sha)).toMatchObject({ sha, subject: 'base', parents: [] });
+    expect((await cli.commitMessage(worktreeRoot, sha)).trim()).toBe('base');
+    expect(await cli.commit(worktreeRoot, 'no-such-commit')).toBeUndefined();
+  });
+
   it('counts ahead/behind the same way in one walk and per revision', async () => {
     const cli = new GitCli('git', recordingLogger());
     const mainSha = (await cli.resolveCommit(repoRoot, 'main')) ?? '';

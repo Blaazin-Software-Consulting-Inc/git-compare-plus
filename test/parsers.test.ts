@@ -3,6 +3,7 @@ import {
   countStatusEntries,
   lineStatsOfContent,
   parseAheadBehindRefs,
+  parseBlameIncremental,
   parseCommitLog,
   parseCommitDates,
   parseNameStatusZ,
@@ -263,5 +264,54 @@ describe('parseTagList', () => {
       { name: 'v1', createdAt: 1_700_000_000_000 },
       { name: 'v0', createdAt: undefined },
     ]);
+  });
+});
+
+describe('parseBlameIncremental', () => {
+  const A = 'a'.repeat(40);
+  const B = 'b'.repeat(40);
+  const ZERO = '0'.repeat(40);
+  const out = [
+    `${A} 1 1 2`,
+    'author Ada Lovelace',
+    'author-time 1700000000',
+    'summary Add engine',
+    'boundary',
+    'filename src/engine.ts',
+    `${ZERO} 3 3 1`,
+    'author External file (--contents)',
+    'author-time 1800000000',
+    'summary Version of src/engine.ts from standard input',
+    `previous ${B} src/engine.ts`,
+    'filename src/engine.ts',
+    `${B} 2 4 1`,
+    'author Grace',
+    'author-time 1750000000',
+    'summary Rename the engine',
+    `previous ${A} src/old engine.ts`,
+    'filename src/old engine.ts',
+    // A later group for a commit already seen repeats only the group line and filename.
+    `${A} 3 5 1`,
+    'filename src/engine.ts',
+    '',
+  ].join('\n');
+
+  it('assigns every final line its commit, path at that commit, and original line', () => {
+    const lines = parseBlameIncremental(out);
+    expect(lines.map((l) => l.commit.sha[0])).toEqual(['a', 'a', '0', 'b', 'a']);
+    expect(lines[0]).toMatchObject({ path: 'src/engine.ts', originalLine: 1, commit: { author: 'Ada Lovelace', authoredAt: 1_700_000_000_000, summary: 'Add engine', uncommitted: false } });
+    expect(lines[1]?.originalLine).toBe(2);
+    expect(lines[4]).toMatchObject({ originalLine: 3, commit: { author: 'Ada Lovelace', summary: 'Add engine' } });
+  });
+
+  it('marks uncommitted lines and keeps the previous commit and path (renames)', () => {
+    const lines = parseBlameIncremental(out);
+    expect(lines[2]?.commit.uncommitted).toBe(true);
+    expect(lines[3]).toMatchObject({ path: 'src/old engine.ts', commit: { previous: { sha: A, path: 'src/old engine.ts' } } });
+    expect(lines[0]?.commit.previous).toBeUndefined();
+  });
+
+  it('returns nothing for empty output', () => {
+    expect(parseBlameIncremental('')).toEqual([]);
   });
 });

@@ -41,6 +41,90 @@ export interface LineStats {
   readonly binary: boolean;
 }
 
+/** The commit a blamed line comes from (`git blame --incremental`). */
+export interface BlameCommit {
+  /** Full SHA; all zeros for lines not committed yet (uncommitted, or unsaved in the editor). */
+  readonly sha: string;
+  readonly author: string;
+  /** Author date, ms since epoch. */
+  readonly authoredAt: number;
+  /** First line of the message. */
+  readonly summary: string;
+  /** The commit before this one that touched the file, and the file's path there (renames). */
+  readonly previous?: { readonly sha: string; readonly path: string };
+  /** True for the all-zero SHA: the line differs from every commit. */
+  readonly uncommitted: boolean;
+}
+
+/** One line's blame. */
+export interface BlameLine {
+  readonly commit: BlameCommit;
+  /** The file's path in `commit` (differs from today's path after a rename). */
+  readonly path: string;
+  /** 1-based line number in `commit`'s version of the file. */
+  readonly originalLine: number;
+}
+
+const BLAME_GROUP = /^([0-9a-f]{40}|[0-9a-f]{64}) (\d+) (\d+) (\d+)$/;
+
+/**
+ * Parse `git blame --incremental`: groups of `<sha> <origLine> <finalLine> <count>`, then header
+ * lines (`author`, `author-time`, `summary`, `previous`, …) the FIRST time a commit appears, ended
+ * by `filename <path>`. Later groups for the same commit repeat only the group line and filename.
+ * @returns one entry per final line, index = line number − 1; lines git did not report are absent.
+ */
+export function parseBlameIncremental(stdout: string): BlameLine[] {
+  const lines: BlameLine[] = [];
+  // Headers seen so far per commit, filled while reading its first group.
+  const headers = new Map<string, Record<string, string>>();
+  let group: { sha: string; original: number; final: number; count: number } | undefined;
+  for (const raw of stdout.split('\n')) {
+    const start = BLAME_GROUP.exec(raw);
+    if (start !== null) {
+      const [, sha = '', original = '0', final = '0', count = '0'] = start;
+      group = { sha, original: Number(original), final: Number(final), count: Number(count) };
+      if (!headers.has(sha)) {
+        headers.set(sha, {});
+      }
+      continue;
+    }
+    if (group === undefined) {
+      continue;
+    }
+    const space = raw.indexOf(' ');
+    const key = space < 0 ? raw : raw.slice(0, space);
+    const value = space < 0 ? '' : raw.slice(space + 1);
+    if (key !== 'filename') {
+      const known = headers.get(group.sha);
+      if (known !== undefined && !(key in known)) {
+        known[key] = value;
+      }
+      continue;
+    }
+    const commit = toBlameCommit(group.sha, headers.get(group.sha) ?? {});
+    for (let i = 0; i < group.count; i++) {
+      lines[group.final - 1 + i] = { commit, path: value, originalLine: group.original + i };
+    }
+    group = undefined;
+  }
+  return lines;
+}
+
+// Commit objects are shared between lines of the same commit (built once per group is fine:
+// headers are complete by the first `filename`).
+function toBlameCommit(sha: string, headers: Readonly<Record<string, string>>): BlameCommit {
+  const previous = headers['previous'];
+  const space = previous === undefined ? -1 : previous.indexOf(' ');
+  return {
+    sha,
+    author: headers['author'] ?? '',
+    authoredAt: unixSecondsToMs(headers['author-time']) ?? 0,
+    summary: headers['summary'] ?? '',
+    previous: previous === undefined || space < 0 ? undefined : { sha: previous.slice(0, space), path: previous.slice(space + 1) },
+    uncommitted: /^0+$/.test(sha),
+  };
+}
+
 /** A tag from `git for-each-ref refs/tags` (format `TAG_LIST_FORMAT`). */
 export interface TagEntry {
   readonly name: string;

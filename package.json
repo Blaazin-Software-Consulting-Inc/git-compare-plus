@@ -21,6 +21,9 @@
     "multi-root"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "extensionDependencies": [
     "vscode.git"
   ],
@@ -630,6 +633,16 @@
           },
           "default": {},
           "markdownDescription": "Default branch for specific repos, overriding `#branchCompare.remote#`. Keys are a repo's folder name or the absolute path of its main worktree; values are branch names, e.g. `{ \"api\": \"upstream/develop\" }`."
+        },
+        "branchCompare.blame.currentLine": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show who last changed the line under the cursor, and when, at the end of that line. Hover it for the full message and actions."
+        },
+        "branchCompare.blame.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the author and age of the line under the cursor in the status bar. Click it to open the commit."
         },
         "branchCompare.changesLayout": {
           "type": "string",

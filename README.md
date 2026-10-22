@@ -76,8 +76,25 @@ Opening a remote branch with no local copy creates the local branch, tracking th
 worktree this window is on. The editor's own branch indicator names the branch, not the folder.
 Click it for **Go to…**: every worktree and branch of this repo, each saying what picking it will
 do ("this window", "opens in a new window", "not checked out: switch to it or create a
-worktree"). The status bar item appears once the extension is in use; it doesn't load the
-extension at startup.
+worktree").
+
+### Blame
+
+Put the cursor on a line and, after a moment, the end of that line shows who last changed it and
+when: `Ada Lovelace, 3 days ago · Fix login retry`. Lines you've changed but not committed, or not
+saved yet, say `Uncommitted change`. Hover the note for:
+
+- the full commit message, author and date, and the short commit ID;
+- **Open Commit**: every file the commit changed, in one diff;
+- **Compare with Previous**: this file just before and just after the commit (follows renames);
+- **Compare with Working Tree**: this file at the commit against the file as it is now.
+
+The status bar shows the same author and age (`$(git-commit) Ada Lovelace, 3 days ago`); click it
+to open the commit.
+
+Blame runs once per version of a file and is reused as you move around. While you type, the note
+is hidden until you pause. Files outside git, never-committed files and files over 20,000 lines are
+skipped. Turn the parts off with `branchCompare.blame.currentLine` and `branchCompare.blame.statusBar`.
 - **Title bar $(diff-multiple)**: compare every repo's main worktree with its own default branch
   in one go. **$(cloud-download)** fetches every repo.
 
@@ -234,6 +251,8 @@ the edited files, which `git gc` cleans up later.
 | `branchCompare.staleFetchHours`    | `24`               | After this many hours without a fetch, a repo is flagged as out of date. |
 | `branchCompare.remote`             | `origin`           | Remote whose HEAD branch is the default branch (`upstream` for forks). |
 | `branchCompare.defaultBranches`    | `{}`               | Per-repo default branch, keyed by folder name or main-worktree path: `{ "api": "upstream/develop" }`. |
+| `branchCompare.blame.currentLine`  | `true`             | Blame note at the end of the current line, with its hover and actions. |
+| `branchCompare.blame.statusBar`    | `true`             | Author and age of the current line in the status bar.               |
 | `branchCompare.changesLayout`      | `list`             | Changes view layout: `list` or `tree` (folders). Title bar toggles it. |
 | `branchCompare.autoRefresh`        | `true`             | Re-run the comparison in Changes automatically when its inputs change.   |
 
@@ -249,7 +268,8 @@ npm run build     # type check (tsc --noEmit) + esbuild bundle → dist/extensio
 npm run package   # minified build + branch-compare.vsix
 npm run budget    # fail if the bundle or the .vsix is over its size budget
 npm run test:host # downloads VS Code 1.90 into .vscode-test/, activates the extension in it,
-                  # checks every command is registered and activation time is within budget
+                  # checks it activates only after startup, every command is registered,
+                  # and activate() is within its time budget
 npm run generate:icons   # rewrite media/diff-bar/*.svg after changing src/views/diffBar.ts
 ```
 
@@ -302,6 +322,9 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
 | `src/operations.ts`             | Safety checks for those actions (counts of what would be lost), naming rules, fetch age |
 | `src/views/content.ts`          | `branch-compare:` documents (file content at a revision)             |
 | `src/aheadBehind.ts`            | Commits ahead of / behind the default Against for each row (`↑3 ↓12`) |
+| `src/blame/blameController.ts`  | Current-line blame: end-of-line note, hover, status bar, hover actions |
+| `src/blame/blameText.ts`        | Wording of the blame note, status text and hover (escaped, with command links) |
+| `src/views/commitDiff.ts`       | Open one commit's changes in a multi-file diff (Commits group, blame)  |
 | `src/branchLocation.ts`         | Where a branch is checked out, and what Open… offers for it            |
 | `src/goTo.ts`                   | Go to… entries, and which worktree the status bar describes           |
 | `src/views/worktreeStatus.ts`   | The status bar item and the Go to… picker                             |
@@ -329,9 +352,14 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
   `<remote>/main`, `<remote>/master`, `main`, then `master`. An override naming a branch that
   doesn't exist is logged and ignored. To fix a repo where `<remote>/HEAD` isn't set, run
   `git remote set-head <remote> --auto`.
-- **Loaded only when used.** The manifest declares no activation events, so VS Code activates the
-  extension when one of its views or commands is first used, never at editor startup;
-  `npm run test:host` checks this.
+- **Activates after startup, never during it.** The only activation event is `onStartupFinished`,
+  so blame and the status bar are ready once a file is open, without delaying the editor's start.
+  Activation itself does no git work beyond finding the repositories; `npm run test:host` checks
+  the activation event and that `activate()` stays within its budget. Locally `activate()` takes a
+  few milliseconds; finding the repositories continues in the background after it returns.
+- **Blame is cached per file version** (`src/blame/blameController.ts`). The editor's text goes to
+  `git blame --incremental --contents -`, so unsaved edits don't shift the lines below them.
+  Moving the cursor re-reads the cache. A git change in any repo clears it.
 - **Automatic refresh redraws only when something changed.** Cursor reports a repo change after
   every `git status` it runs, including on window focus. Comparing results before redrawing keeps
   the tree still. It also stops the comparison triggering itself: a base snapshot writes git
