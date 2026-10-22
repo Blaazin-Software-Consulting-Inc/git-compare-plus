@@ -29,7 +29,8 @@ orders-service     feature/login-retry
 │  ├─ feature/login-retry   main worktree
 │  └─ claude/feature-x             .claude/worktrees/feature-x
 ├─ Branches  14
-└─ Remote Branches  31
+├─ Remote Branches  31
+└─ Stashes  2
 ```
 
 **Order:** in each group, the repo's default branch comes first, then `main`, then `master`.
@@ -168,8 +169,8 @@ commits.
 
 ### Git actions (right-click)
 
-Only actions you'd take while reviewing are here. Commit, push, pull, merge, rebase and stash
-stay in Cursor's Source Control panel.
+Only actions you'd take while reviewing are here. Commit, push, pull, merge and rebase stay in the
+editor's Source Control view.
 
 | Action | On | Safety |
 | --- | --- | --- |
@@ -180,6 +181,23 @@ stay in Cursor's Source Control panel.
 | **Switch Main Worktree to This Branch** | branch not checked out anywhere, or a remote branch | Refused while the main worktree has uncommitted changes. Nothing is carried over or stashed for you. (Open… does the same for this window's worktree.) |
 | **Remove Worktree(s)…** | one or more linked worktrees | Confirmation names each folder and how many uncommitted files would be **permanently deleted**, plus the total. It also warns when a worktree was created by Claude Code. Branches are kept. |
 | **Delete Branch(es)…** | one or more local branches not checked out anywhere | Confirmation lists how many commits each branch has that aren't in the default branch and would be lost, plus the total. |
+
+**Stashes** (under each repo, collapsed at first) lists the repo's stashes, newest first:
+`my work · stash@{0} · on main · 2 h ago`, or `Uncommitted changes on main` for an unnamed one.
+Stashes belong to the repo, so every worktree shows the same list. Expand one to see its files,
+with badges, line counts and diff bars; files saved with `--include-untracked` say `(untracked)`.
+Click a file for its diff.
+
+| Action | What it does |
+| --- | --- |
+| **Open Stash Changes** ($(diff-multiple)) | every file of the stash in one diff |
+| **Apply Stash (keep it)** ($(check)) | applies it to this window's worktree of the repo (or the main worktree if none is open here) and says which; the stash stays |
+| **Pop Stash (apply and remove)** | the same, then removes the stash; if applying fails, git keeps it |
+| **Drop Stash…** | confirms first, saying how many changed files are lost, then deletes it |
+
+Applying is refused by git when the stash conflicts with uncommitted changes in that worktree;
+git's message is shown. Stash numbers (`stash@{0}`) shift when stashes are added or removed, so Pop
+and Drop look the stash up again by its ID right before acting.
 
 **Deleting several at once:** select multiple items with Cmd/Shift-click, even across repos.
 Then right-click, or press **Cmd+Backspace** (**Delete** on Windows/Linux). One confirmation
@@ -395,6 +413,7 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
 | `src/blame/blameController.ts`  | Current-line blame: end-of-line note, hover, status bar, hover actions |
 | `src/blame/blameText.ts`        | Wording of the blame note, status text and hover (escaped, with command links) |
 | `src/views/commitDiff.ts`       | Open one commit's changes in a multi-file diff (Commits group, blame)  |
+| `src/stashes.ts`                | A stash's files (tracked + untracked), its wording, the Drop confirmation |
 | `src/branchLocation.ts`         | Where a branch is checked out, and what Open… offers for it            |
 | `src/goTo.ts`                   | Go to… entries, and which worktree the status bar describes           |
 | `src/views/worktreeStatus.ts`   | The status bar item and the Go to… picker                             |

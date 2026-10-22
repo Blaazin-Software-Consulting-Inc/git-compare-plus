@@ -95,6 +95,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     discoverRepos: async () => (await getServices()).discover(),
     getBase: (repo) => bases.get(repo.commonDir),
     staleFetchHours: () => settings().staleFetchHours,
+    extensionUri: context.extensionUri,
     windowFolders: () => windowFolders(),
     onPersistentFailure: (repoName, reason) =>
       void notifyPersistentFailure(`the ${repoName} repository`, reason, channel, [
@@ -240,6 +241,11 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
       history.gitChanged();
     }, channel, logger),
     register('branchCompare.openBranch', (node?: RepoTreeNode) => actions.openBranch(node), logger),
+    register('branchCompare.stash.apply', (node?: RepoTreeNode) => actions.applyStash(node, 'apply'), logger),
+    register('branchCompare.stash.pop', (node?: RepoTreeNode) => actions.applyStash(node, 'pop'), logger),
+    register('branchCompare.stash.drop', (node?: RepoTreeNode) => actions.dropStash(node), logger),
+    register('branchCompare.stash.openFile', (node?: RepoTreeNode) => actions.openStashFile(node), logger),
+    register('branchCompare.stash.openAll', (node?: RepoTreeNode) => actions.openStashChanges(node), logger),
     register('branchCompare.goTo', () => goTo.pick(), logger),
     register('branchCompare.switchBranch', (node?: RepoTreeNode) => actions.switchBranch(node), logger),
   );

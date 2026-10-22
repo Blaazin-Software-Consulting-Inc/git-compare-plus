@@ -92,7 +92,7 @@ the outcome is always stated before anything happens.
     Changes with that commit as one side.
 - Back and forward buttons in the editor title to step through a file's past versions.
 
-### Phase 5: Commit search and details (done, awaiting review)
+### Phase 5: Commit search and details (done)
 
 - Search commits by message, author, file, changed text, or ID.
 - Commit details view: message, parents, files, and diffs. The Commits group in Changes and the
@@ -100,7 +100,7 @@ the outcome is always stated before anything happens.
 - Every commit list (Commits group, history, search results) offers the same comparison actions
   as Phase 4.
 
-### Phase 6: Stashes
+### Phase 6: Stashes (done, awaiting review)
 
 - List stashes; show a stash's changes; apply, pop, and drop (drop confirms first).
 

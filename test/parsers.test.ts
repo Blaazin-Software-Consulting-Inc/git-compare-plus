@@ -13,6 +13,7 @@ import {
   parseNulList,
   parseNumstatZ,
   parseRefList,
+  parseStashList,
   parseTagList,
   parseWorktreeList,
 } from '../src/git/parsers';
@@ -344,5 +345,29 @@ describe('parseFileHistory', () => {
 
   it('returns nothing for empty output', () => {
     expect(parseFileHistory('', 'a.ts')).toEqual([]);
+  });
+});
+
+describe('parseStashList', () => {
+  const record = (...fields: string[]) => fields.join('\x1f');
+
+  it('reads named and unnamed stashes, their parents and branch', () => {
+    const out = [
+      record('stash@{0}', 's0', 'base index untracked', '1700000000', 'WIP on main: d4151be init'),
+      record('stash@{1}', 's1', 'base index', '1600000000', 'On feature/x: my work: with a colon'),
+      record('stash@{2}', 's2', 'base index', '1600000000', 'WIP on (no branch): abc detached'),
+      '',
+    ].join('\0');
+    expect(parseStashList(out)).toEqual([
+      { ref: 'stash@{0}', sha: 's0', parents: ['base', 'index', 'untracked'], createdAt: 1_700_000_000_000, branch: 'main', message: 'd4151be init', named: false },
+      { ref: 'stash@{1}', sha: 's1', parents: ['base', 'index'], createdAt: 1_600_000_000_000, branch: 'feature/x', message: 'my work: with a colon', named: true },
+      { ref: 'stash@{2}', sha: 's2', parents: ['base', 'index'], createdAt: 1_600_000_000_000, branch: undefined, message: 'abc detached', named: false },
+    ]);
+  });
+
+  it('keeps an unrecognised subject as the message and skips malformed records', () => {
+    expect(parseStashList(record('stash@{0}', 's', 'p', '1', 'custom') + '\0')[0]).toMatchObject({ message: 'custom', named: false, branch: undefined });
+    expect(parseStashList(record('stash@{0}', 's', 'p', 'nope', 'x'))).toEqual([]);
+    expect(parseStashList('')).toEqual([]);
   });
 });

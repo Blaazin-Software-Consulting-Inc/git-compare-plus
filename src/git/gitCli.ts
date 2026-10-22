@@ -30,6 +30,7 @@ import type { Logger } from '../logger';
 import {
   COMMIT_LOG_FORMAT,
   REF_LIST_FORMAT,
+  STASH_LIST_FORMAT,
   TAG_LIST_FORMAT,
   countStatusEntries,
   lineStatsOfContent,
@@ -44,6 +45,7 @@ import {
   parseLsTreeZ,
   parseNumstatZ,
   parseRefList,
+  parseStashList,
   parseTagList,
   parseWorktreeList,
   type BlameLine,
@@ -52,6 +54,7 @@ import {
   type FileHistoryEntry,
   type LineStats,
   type RefEntry,
+  type StashEntry,
   type TagEntry,
   type WorktreeEntry,
 } from './parsers';
@@ -380,6 +383,41 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
       this.emptyTreeIds.set(root, pending);
     }
     return pending;
+  }
+
+  /** The repo's stashes, newest first. Stashes are shared by every worktree of a repo. */
+  async stashes(cwd: string): Promise<StashEntry[]> {
+    return parseStashList(await this.run(cwd, ['stash', 'list', '-z', `--format=${STASH_LIST_FORMAT}`]));
+  }
+
+  /**
+   * Apply a stash to the worktree at `root`, keeping the stash. Fails (with git's message) on
+   * conflicts with the files there; nothing is applied in that case except what git reports.
+   */
+  async stashApply(root: string, sha: string): Promise<void> {
+    await this.run(root, ['stash', 'apply', sha]);
+  }
+
+  /**
+   * Apply then remove a stash. `ref` must be its current `stash@{n}` (see `stashRefFor`). git
+   * keeps the stash if applying fails.
+   */
+  async stashPop(root: string, ref: string): Promise<void> {
+    await this.run(root, ['stash', 'pop', ref]);
+  }
+
+  /** Delete a stash. `ref` must be its current `stash@{n}`. */
+  async stashDrop(cwd: string, ref: string): Promise<void> {
+    await this.run(cwd, ['stash', 'drop', ref]);
+  }
+
+  /**
+   * The stash's current `stash@{n}`, looked up by SHA right before acting: the numbers shift
+   * whenever a stash is added or removed, so a number read earlier may now name another stash.
+   * @returns undefined when the stash no longer exists.
+   */
+  async stashRefFor(cwd: string, sha: string): Promise<string | undefined> {
+    return (await this.stashes(cwd)).find((s) => s.sha === sha)?.ref;
   }
 
   /** One commit's metadata (`git log -1`), or undefined when `revision` is not a commit. */

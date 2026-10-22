@@ -21,6 +21,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { BaseStore } from './baseStore';
 import { branchLocation, localBranchName, openChoices, switchTargetFor, worktreeName, type OpenChoice } from './branchLocation';
+import { dropConfirmation, stashFiles, stashLabel, type StashFile } from './stashes';
+import { revisionUri, sideToUri } from './views/content';
 import type { RepoInfo } from './comparison';
 import type { GitCli } from './git/gitCli';
 import type { RefEntry, WorktreeEntry } from './git/parsers';
@@ -433,6 +435,98 @@ export class GitActions {
     this.deps.repositories.refreshRepo(repo);
   }
 
+  /**
+   * Apply (keep the stash) or Pop (apply, then remove it) to this window's worktree of the repo,
+   * or the main worktree when none is open here; the message names which. git refuses when the
+   * stash conflicts with uncommitted changes there, and Pop then keeps the stash.
+   */
+  async applyStash(node: RepoTreeNode | undefined, mode: 'apply' | 'pop'): Promise<void> {
+    if (node?.kind !== 'stash') {
+      return;
+    }
+    const { repo, stash } = node;
+    const git = await this.deps.getGit();
+    const target = switchTargetFor(await this.deps.repositories.getWorktrees(repo), this.deps.windowFolders());
+    if (target === undefined) {
+      return;
+    }
+    const where = target.inWindow ? "this window's worktree" : `the ${worktreeName(target.worktree, repo.root)}`;
+    try {
+      if (mode === 'apply') {
+        await git.stashApply(target.worktree.path, stash.sha);
+      } else {
+        // stash@{n} shifts when stashes are added or removed: look it up by SHA right now.
+        const ref = await git.stashRefFor(repo.root, stash.sha);
+        if (ref === undefined) {
+          void vscode.window.showInformationMessage('That stash no longer exists.');
+          this.deps.repositories.refreshRepo(repo);
+          return;
+        }
+        await git.stashPop(target.worktree.path, ref);
+      }
+    } catch (error) {
+      this.deps.logger.error('stash apply failed', error, { function: 'applyStash', repo: repo.name, mode, stash: stash.sha, worktree: target.worktree.path });
+      this.deps.repositories.refreshRepo(repo);
+      throw error;
+    }
+    this.deps.logger.info('stash applied', { function: 'applyStash', repo: repo.name, mode, stash: stash.sha, worktree: target.worktree.path });
+    this.deps.repositories.refreshRepo(repo);
+    void vscode.window.showInformationMessage(`${mode === 'pop' ? 'Popped' : 'Applied'} "${stashLabel(stash)}" to ${where}.${mode === 'pop' ? ' The stash was removed.' : ' The stash was kept.'}`);
+  }
+
+  /** Drop a stash after a modal confirmation that says how many files are lost. */
+  async dropStash(node: RepoTreeNode | undefined): Promise<void> {
+    if (node?.kind !== 'stash') {
+      return;
+    }
+    const { repo, stash } = node;
+    const git = await this.deps.getGit();
+    const files = await stashFiles(git, repo.root, stash);
+    if (!(await confirm(dropConfirmation(stash, files.length)))) {
+      return;
+    }
+    const ref = await git.stashRefFor(repo.root, stash.sha);
+    if (ref === undefined) {
+      void vscode.window.showInformationMessage('That stash no longer exists.');
+      this.deps.repositories.refreshRepo(repo);
+      return;
+    }
+    try {
+      await git.stashDrop(repo.root, ref);
+    } catch (error) {
+      this.deps.logger.error('stash drop failed', error, { function: 'dropStash', repo: repo.name, stash: stash.sha, ref });
+      throw error;
+    }
+    this.deps.logger.info('stash dropped', { function: 'dropStash', repo: repo.name, stash: stash.sha, ref, fileCount: files.length });
+    this.deps.repositories.refreshRepo(repo);
+  }
+
+  /** One file of a stash: before (the commit it was made on) vs in the stash. */
+  async openStashFile(node: RepoTreeNode | undefined): Promise<void> {
+    if (node?.kind !== 'stashFile') {
+      return;
+    }
+    const [left, right] = stashFileUris(node.repo.root, node.entry);
+    await vscode.commands.executeCommand('vscode.diff', left, right, `${path.posix.basename(node.entry.file.path)} (before ↔ stash)`);
+  }
+
+  /** Every file of a stash in one multi-file diff. */
+  async openStashChanges(node: RepoTreeNode | undefined): Promise<void> {
+    if (node?.kind !== 'stash') {
+      return;
+    }
+    const files = await stashFiles(await this.deps.getGit(), node.repo.root, node.stash);
+    if (files.length === 0) {
+      void vscode.window.showInformationMessage('This stash has no file changes.');
+      return;
+    }
+    const entries = files.map((entry) => {
+      const [left, right] = stashFileUris(node.repo.root, entry);
+      return [right, entry.leftRevision === undefined || entry.file.status === 'added' ? undefined : left, entry.file.status === 'deleted' ? undefined : right];
+    });
+    await vscode.commands.executeCommand('vscode.changes', `Stash: ${stashLabel(node.stash)}`, entries);
+  }
+
   private refreshRepos(repos: readonly RepoInfo[]): void {
     for (const repo of new Map(repos.map((r) => [r.commonDir, r])).values()) {
       this.deps.repositories.refreshRepo(repo);
@@ -465,4 +559,15 @@ function reportFailures(verb: string, noun: string, attempted: number, failures:
       detail: failures.join('\n'),
     });
   }
+}
+
+// Left = the file before the stash (empty for files the stash added), right = the file in it.
+function stashFileUris(root: string, entry: StashFile): [vscode.Uri, vscode.Uri] {
+  const { file } = entry;
+  const left =
+    entry.leftRevision === undefined || file.status === 'added' || file.status === 'untracked'
+      ? sideToUri({ kind: 'empty' }, file.path)
+      : revisionUri(root, entry.leftRevision, file.oldPath);
+  const right = file.status === 'deleted' ? sideToUri({ kind: 'empty' }, file.path) : revisionUri(root, entry.rightRevision, file.path);
+  return [left, right];
 }

@@ -125,6 +125,52 @@ function toBlameCommit(sha: string, headers: Readonly<Record<string, string>>): 
   };
 }
 
+/** One stash from `git stash list` (format `STASH_LIST_FORMAT`). */
+export interface StashEntry {
+  /** `stash@{n}`: valid only until the stash list changes; act by `sha` and re-resolve. */
+  readonly ref: string;
+  readonly sha: string;
+  /** [commit it was made on, index state, untracked files (only with -u / --include-untracked)]. */
+  readonly parents: readonly string[];
+  /** When it was stashed, ms since epoch. */
+  readonly createdAt: number;
+  /** Branch it was made on (`WIP on main: …` / `On main: …`); undefined when detached or unparseable. */
+  readonly branch?: string;
+  /** The stash message, or for an unnamed stash the commit it was made on (`d4151be init`). */
+  readonly message: string;
+  /** True for `git stash push -m …`; false for an unnamed "WIP" stash. */
+  readonly named: boolean;
+}
+
+/** `--format` for `git stash list -z` matching `parseStashList`. */
+export const STASH_LIST_FORMAT = '%gd%x1f%H%x1f%P%x1f%at%x1f%gs';
+
+/** Parse `git stash list -z --format=STASH_LIST_FORMAT`; newest (`stash@{0}`) first. */
+export function parseStashList(stdout: string): StashEntry[] {
+  return stdout.split('\0').flatMap((record): StashEntry[] => {
+    const [ref, sha, parents, createdUnix, ...subjectParts] = record.replace(/^\n/, '').split('\x1f');
+    const createdAt = unixSecondsToMs(createdUnix);
+    if (!ref || !sha || parents === undefined || createdAt === undefined) {
+      return [];
+    }
+    const subject = subjectParts.join('\x1f');
+    // git writes "WIP on <branch>: <short sha> <subject>" or "On <branch>: <message>".
+    const parsed = /^(WIP on|On) (.+?): (.*)$/s.exec(subject);
+    const branch = parsed?.[2];
+    return [
+      {
+        ref,
+        sha,
+        parents: parents.split(' ').filter((p) => p.length > 0),
+        createdAt,
+        branch: branch === undefined || branch === '(no branch)' ? undefined : branch,
+        message: parsed?.[3] ?? subject,
+        named: parsed?.[1] === 'On',
+      },
+    ];
+  });
+}
+
 /** A tag from `git for-each-ref refs/tags` (format `TAG_LIST_FORMAT`). */
 export interface TagEntry {
   readonly name: string;

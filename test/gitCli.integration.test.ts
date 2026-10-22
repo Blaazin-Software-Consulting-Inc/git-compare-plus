@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { searchArgs } from '../src/commits/commitSearch';
+import { stashFiles } from '../src/stashes';
 import { runComparisons, type BaseSpec, type Subject } from '../src/comparison';
 import { GitCli } from '../src/git/gitCli';
 import { recordingLogger } from './helpers';
@@ -313,6 +314,52 @@ describe('GitCli against a real repository', () => {
     expect((await subjects(searchArgs({ kind: 'author', text: 'T' }))).length).toBeGreaterThanOrEqual(3);
     expect(await subjects(searchArgs({ kind: 'message', text: 'no such text' }))).toEqual([]);
     expect(await cli.emptyTree(repoRoot)).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it('lists, applies, pops and drops stashes, finding stash@{n} by SHA as it shifts', async () => {
+    const cli = new GitCli('git', recordingLogger());
+    const keep = path.join(repoRoot, 'keep.txt');
+    writeFileSync(keep, 'keep\nstashed edit\n');
+    git(repoRoot, 'stash', 'push', '-q', '-m', 'first');
+    writeFileSync(keep, 'keep\nsecond edit\n');
+    writeFileSync(path.join(repoRoot, 'loose.txt'), 'untracked\n');
+    git(repoRoot, 'stash', 'push', '-q', '-u');
+    try {
+      const stashes = await cli.stashes(worktreeRoot);
+      expect(stashes.map((s) => [s.ref, s.named, s.message.startsWith('first') || s.message.includes('main moves on')])).toEqual([
+        ['stash@{0}', false, true],
+        ['stash@{1}', true, true],
+      ]);
+      const [unnamed, first] = stashes;
+      if (unnamed === undefined || first === undefined) {
+        throw new Error('expected two stashes');
+      }
+      // Its files: the tracked edit and the untracked file saved with -u.
+      const files = await stashFiles(cli, repoRoot, unnamed);
+      expect(files.map((f) => [f.file.path, f.file.status])).toEqual([
+        ['keep.txt', 'modified'],
+        ['loose.txt', 'untracked'],
+      ]);
+
+      // Apply keeps the stash and changes the files of the chosen worktree.
+      await cli.stashApply(repoRoot, first.sha);
+      expect(readFileSync(keep, 'utf8')).toBe('keep\nstashed edit\n');
+      git(repoRoot, 'checkout', '--', 'keep.txt');
+
+      // Dropping stash@{0} shifts "first" to stash@{0}; looking it up by SHA follows it.
+      await cli.stashDrop(repoRoot, (await cli.stashRefFor(repoRoot, unnamed.sha)) ?? '');
+      expect(await cli.stashRefFor(repoRoot, first.sha)).toBe('stash@{0}');
+      expect(await cli.stashRefFor(repoRoot, unnamed.sha)).toBeUndefined();
+
+      // Pop applies and removes it.
+      await cli.stashPop(repoRoot, 'stash@{0}');
+      expect(readFileSync(keep, 'utf8')).toBe('keep\nstashed edit\n');
+      expect(await cli.stashes(repoRoot)).toEqual([]);
+    } finally {
+      git(repoRoot, 'checkout', '--', 'keep.txt');
+      rmSync(path.join(repoRoot, 'loose.txt'), { force: true });
+      git(repoRoot, 'stash', 'clear');
+    }
   });
 
   it('counts ahead/behind the same way in one walk and per revision', async () => {

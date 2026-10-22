@@ -144,3 +144,11 @@ describe('shared commit actions (every commit list)', () => {
     expect(missing).toEqual([]);
   });
 });
+
+describe('stash menu (Repositories view)', () => {
+  it.each(['branchCompare.stash.openAll', 'branchCompare.stash.apply', 'branchCompare.stash.pop', 'branchCompare.stash.drop'])('%s is on stash rows only', (command) => {
+    expect(shown(command, 'stash')).toBe(true);
+    expect(Object.values(values).some((value) => shown(command, value))).toBe(false);
+    expect(shown(command, 'commit')).toBe(false);
+  });
+});

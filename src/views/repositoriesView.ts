@@ -5,7 +5,8 @@
  *   repo                       (the main worktree; description = checked-out branch)
  *   ├─ Worktrees (n)           every worktree incl. the main one; e.g. `.claude/worktrees/*`
  *   ├─ Branches (n)            local branches
- *   └─ Remote Branches (n)     remote-tracking branches (collapsed)
+ *   ├─ Remote Branches (n)     remote-tracking branches (collapsed)
+ *   └─ Stashes (n)             the repo's stashes (collapsed); each expands to its files
  *
  * Repo, worktree and branch nodes are "comparable": they carry an inline compare button (reviews
  * the item against the repo's default "Against", i.e. its default branch unless one was set) and a
@@ -49,7 +50,10 @@ import { stableSignature } from '../autoRefresh/scheduling';
 import { sortBranches, sortWorktrees } from '../treeOrder';
 import type { BaseSpec, RepoInfo, Subject } from '../comparison';
 import type { GitCli } from '../git/gitCli';
-import type { RefEntry, WorktreeEntry } from '../git/parsers';
+import type { RefEntry, StashEntry, WorktreeEntry } from '../git/parsers';
+import { stashDescription, stashFiles, stashLabel, stashTooltip, type StashFile } from '../stashes';
+import { changedFileUri, diffBarIcon } from './changesView';
+import { fileLineStatsText } from './lineStatsText';
 import type { Logger } from '../logger';
 
 /** Per-repo data behind the group nodes. */
@@ -64,15 +68,19 @@ interface RepoDetails {
   readonly aheadBehind?: AheadBehindCounts;
   /** The repo's default branch at load time (defaultBranch.ts); undefined when none was found. */
   readonly defaultBranch?: string;
+  /** The repo's stashes, newest first (shared by all its worktrees). */
+  readonly stashes: readonly StashEntry[];
 }
 
-type GroupKind = 'worktrees' | 'branches' | 'remotes';
+type GroupKind = 'worktrees' | 'branches' | 'remotes' | 'stashes';
 
 /** Tree nodes. `repo`, `worktree` and `branch` nodes are comparable (see `toComparisonTarget`). */
 export type RepoTreeNode =
   | { readonly kind: 'repo'; readonly repo: RepoInfo }
   | { readonly kind: 'group'; readonly repo: RepoInfo; readonly group: GroupKind }
   | { readonly kind: 'worktree'; readonly repo: RepoInfo; readonly worktree: WorktreeEntry; readonly isMain: boolean }
+  | { readonly kind: 'stash'; readonly repo: RepoInfo; readonly stash: StashEntry }
+  | { readonly kind: 'stashFile'; readonly repo: RepoInfo; readonly stash: StashEntry; readonly entry: StashFile }
   | { readonly kind: 'branch'; readonly repo: RepoInfo; readonly ref: RefEntry; readonly checkedOutIn?: string }
   | { readonly kind: 'message'; readonly text: string; readonly icon: string };
 
@@ -84,6 +92,8 @@ export interface RepositoriesViewDeps {
   getBase(repo: RepoInfo): BaseSpec | undefined;
   /** Hours after which a repo's last fetch is flagged as stale (setting `branchCompare.staleFetchHours`). */
   staleFetchHours(): number;
+  /** Extension root, for the diff-bar icons on stash files. */
+  readonly extensionUri: vscode.Uri;
   /** Folders open in this window (workspace folders), to mark "this window" worktrees. */
   windowFolders(): readonly string[];
   /** A background reload of `repoName` keeps failing (called once per failure episode). */
@@ -263,6 +273,8 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
           return this.groupNodes(node.repo);
         case 'group':
           return this.groupChildren(node.repo, node.group);
+        case 'stash':
+          return this.stashChildren(node.repo, node.stash);
         default:
           return [];
       }
@@ -294,6 +306,10 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
         const location = branchLocation(node.ref, await this.getWorktrees(node.repo), this.deps.windowFolders());
         return branchItem(node.repo, node.ref, node.checkedOutIn, location, this.deps.getBase(node.repo), { counts: counts?.byRef.get(node.ref.name), baseLabel: counts?.baseLabel });
       }
+      case 'stash':
+        return stashItem(node.stash);
+      case 'stashFile':
+        return stashFileItem(node, this.deps.extensionUri);
       case 'message': {
         const item = new vscode.TreeItem(node.text);
         item.iconPath = new vscode.ThemeIcon(node.icon);
@@ -335,11 +351,12 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   // dialogs all list worktrees and branches in the same order.
   private async loadDetails(repo: RepoInfo): Promise<RepoDetails> {
     const git = await this.deps.getGit();
-    const [worktrees, refs, lastFetchedAt, defaultBranch] = await Promise.all([
+    const [worktrees, refs, lastFetchedAt, defaultBranch, stashes] = await Promise.all([
       git.worktrees(repo.root),
       git.refs(repo.root),
       git.lastFetchedAt(repo.root),
       git.defaultBranch(repo.root),
+      this.loadStashes(git, repo),
     ]);
     // Counted against the base the compare button uses, so `↑3` means "3 commits that compare
     // would show". A base change (Set/Clear Comparison Base) reloads the repo to recount.
@@ -364,6 +381,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
       lastFetchedAt,
       worktreeDates: commitDates,
       defaultBranch,
+      stashes,
       aheadBehind,
     };
   }
@@ -386,11 +404,14 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
 
   private async groupNodes(repo: RepoInfo): Promise<RepoTreeNode[]> {
     await this.getDetails(repo);
-    return (['worktrees', 'branches', 'remotes'] as const).map((group) => ({ kind: 'group', repo, group }));
+    return (['worktrees', 'branches', 'remotes', 'stashes'] as const).map((group) => ({ kind: 'group', repo, group }));
   }
 
   private async groupChildren(repo: RepoInfo, group: GroupKind): Promise<RepoTreeNode[]> {
     const details = await this.getDetails(repo);
+    if (group === 'stashes') {
+      return details.stashes.map((stash) => ({ kind: 'stash', repo, stash }));
+    }
     if (group === 'worktrees') {
       // Stale entries (directory deleted without `git worktree remove`) cannot be diffed.
       // Main = git's first entry (kept first by sortWorktrees), compared by path so filtering a
@@ -406,6 +427,29 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     return details.refs
       .filter((r) => r.kind === kind)
       .map((ref) => ({ kind: 'branch', repo, ref, checkedOutIn: ref.kind === 'local' ? holders.get(ref.name) : undefined }));
+  }
+
+  // Stashes are cosmetic next to worktrees and branches: a failure leaves the group empty (WARN)
+  // rather than failing the whole repo.
+  private async loadStashes(git: GitCli, repo: RepoInfo): Promise<StashEntry[]> {
+    try {
+      return await git.stashes(repo.root);
+    } catch (error) {
+      this.deps.logger.warn('stashes unavailable', { function: 'loadStashes', repo: repo.name, reason: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
+  }
+
+  private async stashChildren(repo: RepoInfo, stash: StashEntry): Promise<RepoTreeNode[]> {
+    try {
+      const files = await stashFiles(await this.deps.getGit(), repo.root, stash);
+      return files.length > 0
+        ? files.map((entry) => ({ kind: 'stashFile', repo, stash, entry }))
+        : [{ kind: 'message', text: 'No file changes', icon: 'info' }];
+    } catch (error) {
+      this.deps.logger.warn('stash files unavailable', { function: 'stashChildren', repo: repo.name, stash: stash.sha, reason: error instanceof Error ? error.message : String(error) });
+      return [{ kind: 'message', text: `Couldn't read this stash: ${error instanceof Error ? error.message : String(error)}`, icon: 'error' }];
+    }
   }
 
   private async repoItem(repo: RepoInfo): Promise<vscode.TreeItem> {
@@ -443,14 +487,16 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
 
   private async groupItem(repo: RepoInfo, group: GroupKind): Promise<vscode.TreeItem> {
     const details = await this.getDetails(repo);
-    const labels: Record<GroupKind, string> = { worktrees: 'Worktrees', branches: 'Branches', remotes: 'Remote Branches' };
-    const icons: Record<GroupKind, string> = { worktrees: 'list-tree', branches: 'git-branch', remotes: 'cloud' };
+    const labels: Record<GroupKind, string> = { worktrees: 'Worktrees', branches: 'Branches', remotes: 'Remote Branches', stashes: 'Stashes' };
+    const icons: Record<GroupKind, string> = { worktrees: 'list-tree', branches: 'git-branch', remotes: 'cloud', stashes: 'archive' };
     const count =
       group === 'worktrees'
         ? details.worktrees.filter((w) => !w.bare && !w.prunable).length
-        : details.refs.filter((r) => r.kind === (group === 'branches' ? 'local' : 'remote')).length;
-    // Remote branch lists are long and rarely the subject of a review; keep them out of the way.
-    const state = group === 'remotes' ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded;
+        : group === 'stashes'
+          ? details.stashes.length
+          : details.refs.filter((r) => r.kind === (group === 'branches' ? 'local' : 'remote')).length;
+    // Remote branches and stashes are long or rarely needed; keep them out of the way.
+    const state = group === 'remotes' || group === 'stashes' ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded;
     const item = new vscode.TreeItem(labels[group], count > 0 ? state : vscode.TreeItemCollapsibleState.None);
     item.id = `group:${repo.commonDir}:${group}`;
     item.description = String(count);
@@ -509,6 +555,33 @@ function branchItem(
         : 'Not checked out. Open… lets you switch to it or create a worktree for it.';
   item.tooltip = withAheadBehindTooltip(`${ref.name} @ ${ref.sha}${ref.upstream !== undefined ? ` → ${ref.upstream}` : ''}\n${opens}`, position);
   item.contextValue = `comparable.branch.${ref.kind}${checkedOutIn !== undefined ? '.checkedOut' : ''}${isBase ? '.base' : ''}`;
+  return item;
+}
+
+function stashItem(stash: StashEntry): vscode.TreeItem {
+  const item = new vscode.TreeItem(stashLabel(stash), vscode.TreeItemCollapsibleState.Collapsed);
+  item.id = `stash:${stash.sha}`;
+  item.description = stashDescription(stash, Date.now());
+  item.tooltip = stashTooltip(stash);
+  item.iconPath = new vscode.ThemeIcon('archive');
+  item.contextValue = 'stash';
+  return item;
+}
+
+function stashFileItem(node: Extract<RepoTreeNode, { kind: 'stashFile' }>, extensionUri: vscode.Uri): vscode.TreeItem {
+  const { file } = node.entry;
+  const item = new vscode.TreeItem(path.posix.basename(file.path));
+  item.id = `stash:${node.stash.sha}:${file.path}`;
+  item.resourceUri = changedFileUri(file, node.repo.commonDir);
+  const icon = diffBarIcon(file, extensionUri);
+  if (icon !== undefined) {
+    item.iconPath = icon;
+  }
+  const directory = path.posix.dirname(file.path);
+  const where = [directory === '.' ? '' : directory, file.status === 'untracked' ? '(untracked)' : ''].filter(Boolean).join(' ');
+  item.description = [fileLineStatsText(file.lines), where].filter((part) => part.length > 0).join('  ');
+  item.tooltip = file.path;
+  item.command = { command: 'branchCompare.stash.openFile', title: 'Open Change', arguments: [node] };
   return item;
 }
 
