@@ -11,3 +11,5 @@ docs/**
 .vscode-test/**
 media/icon.svg
 CONTRIBUTING.md
+bench/**
+.bench/**

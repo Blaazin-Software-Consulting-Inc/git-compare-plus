@@ -1105,7 +1105,7 @@
     ]
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p bench/tsconfig.json",
     "build": "npm run typecheck && node scripts/build.mjs",
     "build:production": "npm run typecheck && node scripts/build.mjs --production",
     "generate:icons": "node scripts/generate-diff-bar-icons.mjs",
@@ -1113,6 +1113,7 @@
     "test": "vitest run",
     "test:host": "node test/host/runHost.mjs",
     "budget": "node scripts/check-budget.mjs",
+    "bench": "node scripts/bench.mjs",
     "package": "npm run build:production && vsce package --no-dependencies --out git-compare-plus.vsix"
   },
   "devDependencies": {

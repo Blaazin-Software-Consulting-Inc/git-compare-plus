@@ -1,8 +1,8 @@
 # Git Compare+
 
 **Compare worktrees, branches, tags and commits side by side, with blame, history, commit search
-and stashes.** A lightweight extension for VS Code and Cursor: no account, no sign-in, no upgrade
-prompts, no telemetry.
+and stashes.** A fast, lightweight extension for VS Code and Cursor: as fast as git itself, with no
+account, no sign-in, no upgrade prompts and no telemetry.
 
 - **Two named sides, everywhere.** Every comparison says what you're *Reviewing* (the right side
   of every diff) and what it's *Against* (the left side). Pick either side from one grouped list:
@@ -380,6 +380,34 @@ own `git.autofetch` is on, the remote branches it fetches show up here automatic
 
 Logs are under **View → Output → Git Compare+**. For more detail, run
 **Developer: Set Log Level…** and choose Debug.
+
+## Fast
+
+Git Compare+ is as fast as git itself: almost all of the time is git's own work, and where an
+action needs several git commands, it runs them at the same time. Measured on git/git (75,031
+commits, 4,525 files) with `npm run bench`:
+
+| Action | Git Compare+ (median of 5) | git alone |
+| --- | --- | --- |
+| Compare two releases (842 files, with line counts and commit list) | 149 ms | 146 ms (`git diff --numstat`) |
+| Review a worktree with uncommitted edits (844 files) | 230–360 ms (varies between runs) | |
+| Blame a 6,800-line file, including unsaved edits | 418 ms | 481 ms (`git blame --incremental`) |
+| File history (200 commits, following renames) | 256 ms | 308 ms (`git log --follow`) |
+| Line history (40 lines) | 669 ms | |
+| Search commit messages / authors | 21 ms / 50 ms | |
+| Search by file path | 289 ms | |
+| Search changed text (`-S`, every branch) | 1.7 s | 1.8 s (`git log -S`) |
+| Commits ahead/behind for every branch | 386 ms | |
+| Load a repository (worktrees, branches, default branch) | 7 ms | |
+
+Apple M5 Pro, git 2.53, Node 24, 2026-10-22. The "git alone" column is the same git command run
+from a shell, which includes starting a process each time. Your numbers depend on your machine and
+repository; run `npm run bench` to measure your own. CI runs the benchmark on every push and fails if
+any action gets about ten times slower.
+
+What you see in the editor also includes two short deliberate pauses: blame waits about 0.15 s
+after the cursor stops (so holding an arrow key doesn't blame every line it passes), and Changes
+waits about 1.5 s after you stop typing before it refreshes.
 
 ## Lightweight by design
 

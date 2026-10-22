@@ -37,3 +37,26 @@ jobs:
       - name: Extension-host smoke test
         if: runner.os != 'Linux'
         run: npm run test:host
+
+  # Speed regressions: the benchmark on git/git (bench/bench.ts), failing if any median is over its
+  # limit. Linux only: one realistic machine is enough to catch a slowdown, and the clone is cached.
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: .bench/git
+          key: bench-git-v2.47.0
+      - run: git config --global user.name ci && git config --global user.email ci@example.com
+      - run: npm ci
+      - run: npm run bench -- --check --json bench-results.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-results
+          path: bench-results.json

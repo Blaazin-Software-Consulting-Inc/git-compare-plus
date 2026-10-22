@@ -11,6 +11,8 @@ npm test          # vitest: unit tests + real-git integration tests (temp repos,
 npm run build     # type check (tsc --noEmit) + esbuild bundle → dist/extension.js
 npm run package   # minified build + git-compare-plus.vsix
 npm run budget    # fail if the bundle or the .vsix is over its size budget
+npm run bench     # time the main actions on git/git (cloned once into .bench/, ~270 MB);
+                  # --check fails if a median is over its limit, --json writes the results
 npm run test:host # downloads VS Code 1.90 into .vscode-test/, activates the extension in it,
                   # checks it activates only after startup, every command is registered,
                   # and activate() is within its time budget
@@ -19,7 +21,7 @@ npm run generate:icon    # redraw media/icon.png (keep media/icon.svg in step)
 ```
 
 CI (`.github/workflows/ci.yml`) runs the tests, packaging, the budget and the host test on macOS,
-Linux and Windows.
+Linux and Windows, and the benchmark with `--check` on Linux.
 
 To try a build, install the `.vsix` and run **Developer: Reload Window**:
 
@@ -83,6 +85,7 @@ In Cursor, add `--profile <name>` to install into a profile other than Default.
 | `src/autoRefresh/changesAutoRefresh.ts` | Re-runs Changes: folder watchers + git events → one non-overlapping re-run |
 | `src/autoRefresh/scheduling.ts` | Waiting for changes to stop, combining overlapping re-runs, change detection |
 | `src/autoRefresh/watchPaths.ts` | Which folders are watched and which changes are ignored             |
+| `bench/bench.ts`                | The speed benchmark: what is timed, on which repo, and the CI limits   |
 | `src/autoRefresh/failureTracker.ts` | Background-failure tracking: when to show the stale message, when to notify once |
 
 ## Design notes
