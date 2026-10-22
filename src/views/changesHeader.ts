@@ -33,7 +33,7 @@ export interface HeaderRow {
   /** Codicon name. */
   readonly icon: string;
   readonly warning: boolean;
-  readonly command?: 'branchCompare.toggleUncommitted' | 'branchCompare.changeBase' | 'branchCompare.toggleMode';
+  readonly command?: 'gitComparePlus.toggleUncommitted' | 'gitComparePlus.changeBase' | 'gitComparePlus.toggleMode';
 }
 
 /**
@@ -92,7 +92,7 @@ function subjectRow(setup: ComparisonSetup, results: readonly ComparisonResult[]
       tooltip: 'What changed (the right side of every diff): files as they are on disk, i.e. commits plus staged, unstaged and (per setting) untracked edits.\nClick to review committed work only.',
       icon: 'edit',
       warning: false,
-      command: 'branchCompare.toggleUncommitted',
+      command: 'gitComparePlus.toggleUncommitted',
     };
   }
 
@@ -104,14 +104,14 @@ function subjectRow(setup: ComparisonSetup, results: readonly ComparisonResult[]
     tooltip: 'What changed (the right side of every diff): only the worktree\'s last commit (HEAD); edits on disk are ignored.\nClick to include uncommitted edits.',
     icon: excluded > 0 ? 'warning' : 'git-commit',
     warning: excluded > 0,
-    command: 'branchCompare.toggleUncommitted',
+    command: 'gitComparePlus.toggleUncommitted',
   };
 }
 
 function baseRow(setup: ComparisonSetup, results: readonly ComparisonResult[]): HeaderRow {
   const base = setup.base;
   const resolvedLabels = [...new Set(results.map((r) => r.baseLabel).filter((l): l is string => l !== undefined))];
-  const common = { role: 'base' as const, icon: 'git-compare', command: 'branchCompare.changeBase' as const };
+  const common = { role: 'base' as const, icon: 'git-compare', command: 'gitComparePlus.changeBase' as const };
 
   switch (base.kind) {
     case 'default': {
@@ -121,7 +121,7 @@ function baseRow(setup: ComparisonSetup, results: readonly ComparisonResult[]): 
         ...common,
         label,
         description: `${detail} · click to change`,
-        tooltip: `${LEFT_SIDE} Each repo's default branch: its remote's HEAD, unless the branchCompare.defaultBranches setting names another.\nClick to compare against something else.`,
+        tooltip: `${LEFT_SIDE} Each repo's default branch: its remote's HEAD, unless the gitComparePlus.defaultBranches setting names another.\nClick to compare against something else.`,
         warning: false,
       };
     }
@@ -165,7 +165,7 @@ function modeRow(setup: ComparisonSetup): HeaderRow {
       tooltip: 'Uncommitted edits have no branch point, so the two sides are compared directly.',
       icon: 'arrow-both',
       warning: false,
-      command: 'branchCompare.toggleMode',
+      command: 'gitComparePlus.toggleMode',
     };
   }
   return setup.mode === 'merge-base'
@@ -176,7 +176,7 @@ function modeRow(setup: ComparisonSetup): HeaderRow {
         tooltip: 'Like a pull request: compared with where the branch split off, so later commits on the base are not shown.',
         icon: 'git-merge',
         warning: false,
-        command: 'branchCompare.toggleMode',
+        command: 'gitComparePlus.toggleMode',
       }
     : {
         role: 'mode',
@@ -185,7 +185,7 @@ function modeRow(setup: ComparisonSetup): HeaderRow {
         tooltip: 'Every difference between the two sides, including commits on the base the subject does not have.',
         icon: 'arrow-both',
         warning: false,
-        command: 'branchCompare.toggleMode',
+        command: 'gitComparePlus.toggleMode',
       };
 }
 

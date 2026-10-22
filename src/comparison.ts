@@ -139,7 +139,7 @@ export interface ComparisonPort extends FingerprintPort {
 
 /** Options shared by every comparison in one run. */
 export interface ComparisonOptions {
-  /** Treat untracked files as uncommitted edits (setting `branchCompare.includeUntracked`). */
+  /** Treat untracked files as uncommitted edits (setting `gitComparePlus.includeUntracked`). */
   readonly includeUntracked: boolean;
   readonly logger: Logger;
 }

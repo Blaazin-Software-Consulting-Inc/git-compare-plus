@@ -14,7 +14,7 @@
  * git extension run `git status` and report a change; the follow-up rerun finds identical results
  * and stops there.
  *
- * Controlled by `branchCompare.autoRefresh` (default on). Watchers are rebuilt only when the set of
+ * Controlled by `gitComparePlus.autoRefresh` (default on). Watchers are rebuilt only when the set of
  * watched folders changes, not on every refresh.
  *
  * Failures: an automatic rerun never shows an error popup per failure. While reruns fail, the
@@ -45,7 +45,7 @@ export class ChangesAutoRefresh implements vscode.Disposable {
 
   /**
    * @param rerun - recompute and redraw-if-changed (CompareCommands.rerunQuietly); rejects on failure.
-   * @param isEnabled - reads the `branchCompare.autoRefresh` setting.
+   * @param isEnabled - reads the `gitComparePlus.autoRefresh` setting.
    * @param onPersistentFailure - called once per failure episode that persists.
    */
   constructor(

@@ -1,210 +1,62 @@
-# Git Branch & Worktree Compare
+# Git Compare+
 
-A local VS Code / Cursor extension for reviewing what a git **worktree** or **branch** changes
-compared with `main` (or any other branch). It works with a single repository or with many
-repositories in one window, such as `my-services.code-workspace`.
+**Compare worktrees, branches, tags and commits side by side, with blame, history, commit search
+and stashes.** A lightweight extension for VS Code and Cursor: no account, no sign-in, no upgrade
+prompts, no telemetry.
 
-## Use
+- **Two named sides, everywhere.** Every comparison says what you're *Reviewing* (the right side
+  of every diff) and what it's *Against* (the left side). Pick either side from one grouped list:
+  this window, worktrees, branches, remote branches, tags or commits.
+- **Worktrees you can tell apart.** Every branch says where it's checked out, and **Open…** says
+  what it will do before it does it: open that worktree, switch this window, or create a worktree.
+- **Review tools.** Line counts and green/red diff bars per file, reviewed checkboxes that clear
+  when a file changes, commits ahead/behind, the commits behind a comparison, and a folder view.
+- **Blame and history.** The current line's author and commit at the end of the line; file and
+  line history with comparisons against any version, branch or worktree; commit search by message,
+  author, file, changed text or ID; stashes you can open, apply, pop and drop.
+- **Many repos at once.** Works with one repository or a whole multi-root workspace, including
+  linked worktrees that aren't open in the window.
 
-Click the **Git Branch & Worktree Compare** icon in the activity bar (the left-hand icon strip).
-The sidebar has two sections.
+## Quick start
+
+1. Click the **Git Compare+** icon in the activity bar.
+2. Click **Compare…** (the compare button in the Repositories title bar). Pick what to review (the
+   worktree open in this window is preselected), then what to compare it with (the default branch
+   is preselected).
+3. Click a file in **Changes** to see its diff. Tick its checkbox once you've reviewed it.
+
+To review a branch or worktree against the default branch in one click, hover its row in
+Repositories and click its compare button.
+
+## Requirements
+
+- VS Code 1.90 or later, or Cursor, with the built-in Git extension enabled.
+- git on your PATH (the same one the editor uses). git 2.41 or later counts commits ahead/behind for
+  every branch in one go; older versions count local branches only.
+- The workspace must be trusted: git can run programs named in a repository's own configuration
+  (hooks, `core.fsmonitor`), so the extension is disabled in Restricted Mode.
+
+## Features
+
+### Comparing
+
+Click the **Git Compare+** icon in the activity bar (the left-hand icon strip).
+The sidebar has four sections: **Repositories**, **Changes**, **History** and **Commits** (the
+last two start collapsed).
 
 **Every comparison has two named sides,** used the same way everywhere:
 
 - **Reviewing**: what changed. It's the right side of every diff.
 - **Against**: what it's compared with. It's the left side.
 
-The quickest way to start is **Compare…** ($(git-compare) in the Repositories title bar, or the
+The quickest way to start is **Compare…** (the compare button in the Repositories title bar, or the
 Command Palette). It asks two questions, "What do you want to review?" and "Compare it with…".
 Both lists are grouped the same way: *This window* (the worktree open here), *Worktrees*,
 *Branches*, *Remote branches*, *Tags*, and *Commits* (search recent commits by message, author or
 ID). You can also type any branch, tag or commit ID. The default branch is preselected for the
 second question.
 
-**Repositories**: every repo in the window. In a single-repo window it opens already expanded.
-
-```
-orders-service     feature/login-retry
-├─ Worktrees  2
-│  ├─ feature/login-retry   main worktree
-│  └─ claude/feature-x             .claude/worktrees/feature-x
-├─ Branches  14
-├─ Remote Branches  31
-└─ Stashes  2
-```
-
-**Order:** in each group, the repo's default branch comes first, then `main`, then `master`.
-Everything else follows, newest commit first. The main worktree is always first under Worktrees.
-Each worktree and branch shows the age of its latest commit (`3 days ago`). The Compare pickers
-list branches in the same order.
-
-**Ahead/behind:** each worktree and branch also shows how far it has moved from the repo's
-default Against. `↑3 ↓12` means 3 commits the Against side doesn't have, and 12 commits on it that
-this row doesn't have. A row level with it shows no arrows; hover for the counts in words. The
-counts follow the default Against: change it and every row recounts. A worktree counts from its
-last commit. With git 2.41 or later, every branch is counted in one git command.
-Older git (Apple's bundled git can lag behind) counts local branches and detached worktrees one
-by one, and remote branches show no counts.
-
-- **$(git-compare) button** (hover over a repo, worktree or branch): review it against the
-  repo's **default Against**. Every repo row says what that is (`against origin/main`). It's the
-  repo's default branch (`origin/HEAD`, which is `master` or `main` depending on the repo) unless
-  you've changed it. If `origin` is your fork, set `branchCompare.remote` to `upstream`; to pick a
-  different default branch for one repo, use `branchCompare.defaultBranches`.
-- **Right-click → Review Against…**: review that item against anything in the grouped picker.
-- **Right-click a repo → Change Default Against…**, or **right-click a worktree or branch → Use
-  as Default Against**: from then on, the compare button for that repo uses it. That item gets a
-  $(target) marker. **Reset Default Against** goes back to the default branch. The choice is
-  saved per workspace.
-- **Right-click a worktree → Open Worktree in New Window**.
-
-**Where each branch lives.** Every branch row says where it's checked out: `in this window`,
-`in worktree .wt/x`, `in main worktree`, or `not checked out`. Remote branches say where their
-local copy is, if there is one. The worktree open in this window is marked `this window`.
-
-**Open…** ($(window) on a branch row, or right-click) does one thing, decided by where the branch
-lives, and tells you before it does it:
-
-| The branch is… | Open… |
-| --- | --- |
-| in this window | Says so. Nothing changes. |
-| in another worktree | Opens that worktree in a new window. Nothing changes on disk. |
-| not checked out | Asks which you want. **Switch this window to it** changes the files in this window's folder; it's refused if that folder has uncommitted changes, and nothing is stashed for you. **Create a worktree for it** makes a separate folder (`<repo>.worktrees/<branch>` next to the repo) and opens it in a new window, leaving your current work untouched. |
-
-Opening a remote branch with no local copy creates the local branch, tracking the remote one.
-
-**Status bar:** `$(list-tree) main worktree` or `$(list-tree) .claude/worktrees/x` shows which
-worktree this window is on. The editor's own branch indicator names the branch, not the folder.
-Click it for **Go to…**: every worktree and branch of this repo, each saying what picking it will
-do ("this window", "opens in a new window", "not checked out: switch to it or create a
-worktree").
-
-### History
-
-The **History** view (third section of the sidebar, collapsed at first) shows the commits that
-changed the file in the active editor, newest first. It follows renames and switches as you
-switch files. Right-click in an editor or the Explorer for **Show File History**, or select lines
-and choose **Show Line History** to see only the commits that changed those lines. Line history
-stays until you ask for a file's history again.
-
-Every commit row compares in the same ways:
-
-| Action | Shows (this file only) |
-| --- | --- |
-| click (**Compare with Previous**) | the file just before vs at that commit |
-| **Compare with Working Tree** ($(file) on the row) | the file at that commit vs as it is now, editable |
-| **Compare with Branch, Tag or Commit…** | the file at that commit vs anything in the grouped picker, including another worktree |
-| **Select for Compare**, then **Compare with Selected** | two commits of the file |
-| select two rows, **Compare These Two** | the older on the left, the newer on the right |
-
-Every history row also has the whole-commit actions shared by all commit lists (see **Commits**
-below), such as **Review This Commit** and **Show Commit Details**.
-
-**Stepping through versions:** the $(chevron-left) $(chevron-right) buttons in the editor title
-move through the file's versions one at a time. Each diff shows one version against the one
-before it, so the left side is always "just before" the right. From a file with uncommitted
-changes, the first step back shows those changes. The history loads only while the view is open,
-or when you first press a button, and is reused until git changes.
-
-Line history uses the committed version's line numbers. If you've edited the file since, the
-lines may have moved.
-
-### Commits: search and details
-
-The **Commits** view (fourth section, collapsed at first) has **Search Commits…** ($(search)).
-Choose what to search by, then type:
-
-| Search by | Finds |
-| --- | --- |
-| Message | commits whose message contains the text (not case-sensitive) |
-| Author | commits by an author whose name or email contains the text |
-| File | commits that changed a file whose path contains the text, e.g. `login` or `src/auth/` |
-| Changed text | commits that added or removed the text in some file, e.g. a function name |
-| Commit ID | one commit by full or short ID, or a tag |
-
-Searches cover every branch and tag, newest first, up to 200 results.
-
-Expand a commit to see its details: author and date, its parent (click it to show that commit),
-and the files it changed, with the same badges, line counts and diff bars as Changes. Click a
-file for its diff. Hover the commit for its full message. **Show Commit Details** ($(info)) on a
-commit in Changes or History opens it here.
-
-**The same actions on every commit**, whether it's in the Commits group in Changes, in History, or
-here:
-
-| Action | Shows, in Changes |
-| --- | --- |
-| **Review This Commit** | Reviewing = the commit, Against = its parent |
-| **Review Changes Since This Commit** | Reviewing = the worktree, Against = the commit |
-| **Review This Commit Against…** | the commit against anything in the grouped picker |
-| **Select Commit for Compare**, then **Review Against Selected Commit** | this commit against the selected one |
-| select two, **Compare These Two Commits** | the newer one against the older one |
-| **Open Commit (all files)**, **Copy Commit ID** | one multi-file diff; the full ID |
-
-History rows also have the file-only comparisons described above.
-
-### Blame
-
-Put the cursor on a line and, after a moment, the end of that line shows who last changed it and
-when: `Ada Lovelace, 3 days ago · Fix login retry`. Lines you've changed but not committed, or not
-saved yet, say `Uncommitted change`. Hover the note for:
-
-- the full commit message, author and date, and the short commit ID;
-- **Open Commit**: every file the commit changed, in one diff;
-- **Compare with Previous**: this file just before and just after the commit (follows renames);
-- **Compare with Working Tree**: this file at the commit against the file as it is now.
-
-The status bar shows the same author and age (`$(git-commit) Ada Lovelace, 3 days ago`); click it
-to open the commit.
-
-Blame runs once per version of a file and is reused as you move around. While you type, the note
-is hidden until you pause. Files outside git, never-committed files and files over 20,000 lines are
-skipped. Turn the parts off with `branchCompare.blame.currentLine` and `branchCompare.blame.statusBar`.
-- **Title bar $(diff-multiple)**: compare every repo's main worktree with its own default branch
-  in one go. **$(cloud-download)** fetches every repo.
-
-Each repo row shows when it was last fetched (`fetched 3 h ago`). If that's longer than
-`staleFetchHours`, the row turns yellow, because comparisons with `origin/…` may be missing newer
-commits.
-
-### Git actions (right-click)
-
-Only actions you'd take while reviewing are here. Commit, push, pull, merge and rebase stay in the
-editor's Source Control view.
-
-| Action | On | Safety |
-| --- | --- | --- |
-| **Fetch** | repo (or title bar: all repos) | Runs without prompting for credentials; if git needs a password it hasn't stored, the fetch fails quickly and the reason is shown. |
-| **Create Branch From Here…** | repo, worktree, branch | Doesn't switch to the new branch. Optionally creates a worktree for it right after. |
-| **Create Worktree…** | branch not checked out anywhere, or a remote branch | A remote branch gets a local branch with the same name that tracks it. The suggested folder is `<repo>.worktrees/<branch>` next to the repo. |
-| **Open…** | any branch | See the table above: says what it will do before doing it. |
-| **Switch Main Worktree to This Branch** | branch not checked out anywhere, or a remote branch | Refused while the main worktree has uncommitted changes. Nothing is carried over or stashed for you. (Open… does the same for this window's worktree.) |
-| **Remove Worktree(s)…** | one or more linked worktrees | Confirmation names each folder and how many uncommitted files would be **permanently deleted**, plus the total. It also warns when a worktree was created by Claude Code. Branches are kept. |
-| **Delete Branch(es)…** | one or more local branches not checked out anywhere | Confirmation lists how many commits each branch has that aren't in the default branch and would be lost, plus the total. |
-
-**Stashes** (under each repo, collapsed at first) lists the repo's stashes, newest first:
-`my work · stash@{0} · on main · 2 h ago`, or `Uncommitted changes on main` for an unnamed one.
-Stashes belong to the repo, so every worktree shows the same list. Expand one to see its files,
-with badges, line counts and diff bars; files saved with `--include-untracked` say `(untracked)`.
-Click a file for its diff.
-
-| Action | What it does |
-| --- | --- |
-| **Open Stash Changes** ($(diff-multiple)) | every file of the stash in one diff |
-| **Apply Stash (keep it)** ($(check)) | applies it to this window's worktree of the repo (or the main worktree if none is open here) and says which; the stash stays |
-| **Pop Stash (apply and remove)** | the same, then removes the stash; if applying fails, git keeps it |
-| **Drop Stash…** | confirms first, saying how many changed files are lost, then deletes it |
-
-Applying is refused by git when the stash conflicts with uncommitted changes in that worktree;
-git's message is shown. Stash numbers (`stash@{0}`) shift when stashes are added or removed, so Pop
-and Drop look the stash up again by its ID right before acting.
-
-**Deleting several at once:** select multiple items with Cmd/Shift-click, even across repos.
-Then right-click, or press **Cmd+Backspace** (**Delete** on Windows/Linux). One confirmation
-covers the whole selection. Items that can't be deleted are listed as **Skipped** with the reason:
-a checked-out branch, a remote branch, or the main worktree. With the Delete key, a selection that
-mixes worktrees and branches removes the worktrees first. That way, a branch whose only
-checkout was one of those worktrees is deleted in the same pass.
+#### The Changes view
 
 **Changes** starts with three header rows that say exactly what was compared. Click a row to
 change that part, and the comparison re-runs:
@@ -215,8 +67,8 @@ change that part, and the comparison re-runs:
 ⑂  Showing: changes since branch point · click for all differences        ← click: switch mode
 ```
 
-The Reviewing row has a $(list-selection) button to review something else against the same
-Against side. Both side rows have a $(arrow-swap) button that swaps them. Branches, tags and
+The Reviewing row has a button to review something else against the same Against side. Both
+side rows have a ⇄ button that swaps them. Branches, tags and
 commits say which they are (`tag · committed work`), and a commit shows its short ID and message
 rather than a bare SHA.
 
@@ -224,8 +76,7 @@ Below the header are the changed files, with A/M/D/R/U badges and lines added an
 (`+12 −3`, or `binary`). Each file's icon is a small GitHub-style bar of five squares: green for
 added lines, red for removed, grey when fewer than five lines changed. Hover a file for the
 counts in colour and in words. Binary files keep their normal file-type icon. The view title and
-each repo row show the totals. When several repos are
-compared, files are grouped by repo; repos with no changes are hidden and counted at the top.
+each repo row show the totals. When several repos are compared, files are grouped by repo; repos with no changes are hidden and counted at the top.
 Click a file to open its diff in the editor.
 
 **Commits:** a collapsed **Commits** group (per repo) lists the commits the comparison covers,
@@ -249,50 +100,21 @@ the files are still listed, just without them.
 
 Right-click a file for **Open File**, the file itself: the real file, editable, when the
 comparison includes uncommitted edits. **Open File at Base** opens the base version, read-only.
-Each is hidden when that side doesn't exist (a new or deleted file). Open File is also the
-$(go-to-file) button on the row.
+Each is hidden when that side doesn't exist (a new or deleted file). Open File is also a button
+on the row.
 
 The title bar has **Open All Changes** (every file in one scrolling diff), **Refresh Comparison**
 (re-run now; normally this happens automatically), **Fetch and Refresh**, **View as Tree / View as
 List** and **Clear**. In tree view, files are grouped into folders with their own totals, and a
 folder that only holds one other folder is combined with it (`src/views`). The choice is saved as
-the `branchCompare.changesLayout` setting. The `…` menu has the three header actions plus **Swap
+the `gitComparePlus.changesLayout` setting. The `…` menu has the three header actions plus **Swap
 Sides**: what you were reviewing becomes the base, and the base becomes what you review (one repo
 at a time). Each side keeps whether it includes uncommitted edits.
 
-If the base is a remote branch that hasn't been fetched recently, the **With:** row turns into a
+If the base is a remote branch that hasn't been fetched recently, the **Against:** row turns into a
 warning: `fetched 3 days ago, may be out of date`.
 
-### Staying current
-
-Both views update themselves; you only need **Refresh** if you've turned automatic refresh off.
-
-| View | Updates when | How |
-| --- | --- | --- |
-| **Repositories** | You commit, switch, create or delete branches, add or remove worktrees, or fetch, whether in Source Control, the terminal or Claude Code | Follows Cursor's git change events. Each repo reloads about 1 s after changes stop, and the tree redraws only if something actually changed. |
-| **Changes** | Files change in a compared worktree (edits, saves, new or deleted files), or the git state of a compared repo changes | Watches the compared worktree folders, including ones not open in this window, plus git events for the repos involved. Re-runs about 1.5 s after changes stop and redraws only if the results differ. Turn off with `branchCompare.autoRefresh`. |
-| **Ages** (`3 h ago`, stale fetch) | Every minute | Redraw only, no git commands. |
-
-Changes inside `.git`, `node_modules`, `dist`, `build`, `out`, `coverage`, `cdk.out` and
-similar folders don't trigger a re-run.
-
-**When a background refresh fails** (for example git's `index.lock` held during a rebase, or a
-worktree folder deleted from under the view), the view keeps showing what it had, and says so:
-
-- The message bar at the top of the view reads `⚠ Couldn't refresh <repo or comparison> (2 min
-  ago): <reason>. Showing earlier results; Refresh to retry.` In Repositories, the affected repo
-  also gets a warning icon.
-- No popup appears for a one-off failure; most clear up on the next refresh a second later.
-- If it keeps failing (3 times in a row, or for a minute), **one** notification appears for that
-  run of failures, with **Show Log** plus **Refresh** (Repositories) or **Turn Off
-  Auto-Refresh** (Changes). It won't appear again until a refresh has succeeded.
-- The next successful refresh, automatic or manual, removes the message without a popup.
-- Errors from actions you start yourself (compare, fetch, delete…) still show immediately.
-
-**Fetching is never automatic:** it contacts your git host using your credentials. If Cursor's
-own `git.autofetch` is on, the remote branches it fetches show up here automatically.
-
-### What is compared
+#### What exactly is compared
 
 **What you're reviewing (right-hand side)**
 
@@ -325,148 +147,264 @@ A snapshot is built from a temporary copy of the worktree's git index. That work
 staging area are never modified. The only side effect is that git stores unreferenced copies of
 the edited files, which `git gc` cleans up later.
 
+### Repositories, worktrees and branches
+
+**Repositories**: every repo in the window. In a single-repo window it opens already expanded.
+
+```
+orders-service     feature/login-retry
+├─ Worktrees  2
+│  ├─ feature/login-retry   main worktree
+│  └─ claude/feature-x             .claude/worktrees/feature-x
+├─ Branches  14
+├─ Remote Branches  31
+└─ Stashes  2
+```
+
+**Order:** in each group, the repo's default branch comes first, then `main`, then `master`.
+Everything else follows, newest commit first. The main worktree is always first under Worktrees.
+Each worktree and branch shows the age of its latest commit (`3 days ago`). The Compare pickers
+list branches in the same order.
+
+**Ahead/behind:** each worktree and branch also shows how far it has moved from the repo's
+default Against. `↑3 ↓12` means 3 commits the Against side doesn't have, and 12 commits on it that
+this row doesn't have. A row level with it shows no arrows; hover for the counts in words. The
+counts follow the default Against: change it and every row recounts. A worktree counts from its
+last commit. With git 2.41 or later, every branch is counted in one git command.
+Older git (Apple's bundled git can lag behind) counts local branches and detached worktrees one
+by one, and remote branches show no counts.
+
+- **Compare button** (hover over a repo, worktree or branch): review it against the
+  repo's **default Against**. Every repo row says what that is (`against origin/main`). It's the
+  repo's default branch (`origin/HEAD`, which is `master` or `main` depending on the repo) unless
+  you've changed it. If `origin` is your fork, set `gitComparePlus.remote` to `upstream`; to pick a
+  different default branch for one repo, use `gitComparePlus.defaultBranches`.
+- **Right-click → Review Against…**: review that item against anything in the grouped picker.
+- **Right-click a repo → Change Default Against…**, or **right-click a worktree or branch → Use
+  as Default Against**: from then on, the compare button for that repo uses it. That item gets a
+  target marker. **Reset Default Against** goes back to the default branch. The choice is
+  saved per workspace.
+- **Right-click a worktree → Open Worktree in New Window**.
+- **Title bar**: **Compare All Repos** compares every repo's main worktree with its own default
+  branch in one go; **Fetch All Repos** fetches every repo.
+
+Each repo row shows when it was last fetched (`fetched 3 h ago`). If that's longer than
+`staleFetchHours`, the row turns yellow, because comparisons with `origin/…` may be missing newer
+commits.
+
+**Where each branch lives.** Every branch row says where it's checked out: `in this window`,
+`in worktree .wt/x`, `in main worktree`, or `not checked out`. Remote branches say where their
+local copy is, if there is one. The worktree open in this window is marked `this window`.
+
+**Open…** (a button on each branch row, or right-click) does one thing, decided by where the branch
+lives, and tells you before it does it:
+
+| The branch is… | Open… |
+| --- | --- |
+| in this window | Says so. Nothing changes. |
+| in another worktree | Opens that worktree in a new window. Nothing changes on disk. |
+| not checked out | Asks which you want. **Switch this window to it** changes the files in this window's folder; it's refused if that folder has uncommitted changes, and nothing is stashed for you. **Create a worktree for it** makes a separate folder (`<repo>.worktrees/<branch>` next to the repo) and opens it in a new window, leaving your current work untouched. |
+
+Opening a remote branch with no local copy creates the local branch, tracking the remote one.
+
+**Status bar:** `main worktree` or `.claude/worktrees/x` (with a tree icon) shows which
+worktree this window is on. The editor's own branch indicator names the branch, not the folder.
+Click it for **Go to…**: every worktree and branch of this repo, each saying what picking it will
+do ("this window", "opens in a new window", "not checked out: switch to it or create a
+worktree").
+
+#### Git actions (right-click)
+
+Only actions you'd take while reviewing are here. Commit, push, pull, merge and rebase stay in the
+editor's Source Control view.
+
+| Action | On | Safety |
+| --- | --- | --- |
+| **Fetch** | repo (or title bar: all repos) | Runs without prompting for credentials; if git needs a password it hasn't stored, the fetch fails quickly and the reason is shown. |
+| **Create Branch From Here…** | repo, worktree, branch | Doesn't switch to the new branch. Optionally creates a worktree for it right after. |
+| **Create Worktree…** | branch not checked out anywhere, or a remote branch | A remote branch gets a local branch with the same name that tracks it. The suggested folder is `<repo>.worktrees/<branch>` next to the repo. |
+| **Open…** | any branch | See the table above: says what it will do before doing it. |
+| **Switch Main Worktree to This Branch** | branch not checked out anywhere, or a remote branch | Refused while the main worktree has uncommitted changes. Nothing is carried over or stashed for you. (Open… does the same for this window's worktree.) |
+| **Remove Worktree(s)…** | one or more linked worktrees | Confirmation names each folder and how many uncommitted files would be **permanently deleted**, plus the total. It also warns when a worktree was created by Claude Code. Branches are kept. |
+| **Delete Branch(es)…** | one or more local branches not checked out anywhere | Confirmation lists how many commits each branch has that aren't in the default branch and would be lost, plus the total. |
+
+**Stashes** (under each repo, collapsed at first) lists the repo's stashes, newest first:
+`my work · stash@{0} · on main · 2 h ago`, or `Uncommitted changes on main` for an unnamed one.
+Stashes belong to the repo, so every worktree shows the same list. Expand one to see its files,
+with badges, line counts and diff bars; files saved with `--include-untracked` say `(untracked)`.
+Click a file for its diff.
+
+| Action | What it does |
+| --- | --- |
+| **Open Stash Changes** (row button) | every file of the stash in one diff |
+| **Apply Stash (keep it)** (row button) | applies it to this window's worktree of the repo (or the main worktree if none is open here) and says which; the stash stays |
+| **Pop Stash (apply and remove)** | the same, then removes the stash; if applying fails, git keeps it |
+| **Drop Stash…** | confirms first, saying how many changed files are lost, then deletes it |
+
+Applying is refused by git when the stash conflicts with uncommitted changes in that worktree;
+git's message is shown. Stash numbers (`stash@{0}`) shift when stashes are added or removed, so Pop
+and Drop look the stash up again by its ID right before acting.
+
+**Deleting several at once:** select multiple items with Cmd/Shift-click, even across repos.
+Then right-click, or press **Cmd+Backspace** (**Delete** on Windows/Linux). One confirmation
+covers the whole selection. Items that can't be deleted are listed as **Skipped** with the reason:
+a checked-out branch, a remote branch, or the main worktree. With the Delete key, a selection that
+mixes worktrees and branches removes the worktrees first. That way, a branch whose only
+checkout was one of those worktrees is deleted in the same pass.
+
+### History
+
+The **History** view (third section of the sidebar, collapsed at first) shows the commits that
+changed the file in the active editor, newest first. It follows renames and switches as you
+switch files. Right-click in an editor or the Explorer for **Show File History**, or select lines
+and choose **Show Line History** to see only the commits that changed those lines. Line history
+stays until you ask for a file's history again.
+
+Every commit row compares in the same ways:
+
+| Action | Shows (this file only) |
+| --- | --- |
+| click (**Compare with Previous**) | the file just before vs at that commit |
+| **Compare with Working Tree** (row button) | the file at that commit vs as it is now, editable |
+| **Compare with Branch, Tag or Commit…** | the file at that commit vs anything in the grouped picker, including another worktree |
+| **Select for Compare**, then **Compare with Selected** | two commits of the file |
+| select two rows, **Compare These Two** | the older on the left, the newer on the right |
+
+Every history row also has the whole-commit actions shared by all commit lists (see **Commits**
+below), such as **Review This Commit** and **Show Commit Details**.
+
+**Stepping through versions:** the ◀ ▶ buttons in the editor title
+move through the file's versions one at a time. Each diff shows one version against the one
+before it, so the left side is always "just before" the right. From a file with uncommitted
+changes, the first step back shows those changes. The history loads only while the view is open,
+or when you first press a button, and is reused until git changes.
+
+Line history uses the committed version's line numbers. If you've edited the file since, the
+lines may have moved.
+
+### Commits: search and details
+
+The **Commits** view (fourth section, collapsed at first) has **Search Commits…** (search button in its title bar).
+Choose what to search by, then type:
+
+| Search by | Finds |
+| --- | --- |
+| Message | commits whose message contains the text (not case-sensitive) |
+| Author | commits by an author whose name or email contains the text |
+| File | commits that changed a file whose path contains the text, e.g. `login` or `src/auth/` |
+| Changed text | commits that added or removed the text in some file, e.g. a function name |
+| Commit ID | one commit by full or short ID, or a tag |
+
+Searches cover every branch and tag, newest first, up to 200 results.
+
+Expand a commit to see its details: author and date, its parent (click it to show that commit),
+and the files it changed, with the same badges, line counts and diff bars as Changes. Click a
+file for its diff. Hover the commit for its full message. **Show Commit Details** on a commit in
+Changes or History opens it here.
+
+**The same actions on every commit**, whether it's in the Commits group in Changes, in History, or
+here:
+
+| Action | Shows, in Changes |
+| --- | --- |
+| **Review This Commit** | Reviewing = the commit, Against = its parent |
+| **Review Changes Since This Commit** | Reviewing = the worktree, Against = the commit |
+| **Review This Commit Against…** | the commit against anything in the grouped picker |
+| **Select Commit for Compare**, then **Review Against Selected Commit** | this commit against the selected one |
+| select two, **Compare These Two Commits** | the newer one against the older one |
+| **Open Commit (all files)**, **Copy Commit ID** | one multi-file diff; the full ID |
+
+History rows also have the file-only comparisons described above.
+
+### Blame
+
+Put the cursor on a line and, after a moment, the end of that line shows who last changed it and
+when: `Ada Lovelace, 3 days ago · Fix login retry`. Lines you've changed but not committed, or not
+saved yet, say `Uncommitted change`. Hover the note for:
+
+- the full commit message, author and date, and the short commit ID;
+- **Open Commit**: every file the commit changed, in one diff;
+- **Compare with Previous**: this file just before and just after the commit (follows renames);
+- **Compare with Working Tree**: this file at the commit against the file as it is now.
+
+The status bar shows the same author and age (`Ada Lovelace, 3 days ago`); click it
+to open the commit.
+
+Blame runs once per version of a file and is reused as you move around. While you type, the note
+is hidden until you pause. Files outside git, never-committed files and files over 20,000 lines are
+skipped. Turn the parts off with `gitComparePlus.blame.currentLine` and `gitComparePlus.blame.statusBar`.
+
+### Staying current
+
+Both views update themselves; you only need **Refresh** if you've turned automatic refresh off.
+
+| View | Updates when | How |
+| --- | --- | --- |
+| **Repositories** | You commit, switch, create or delete branches, add or remove worktrees, or fetch, whether in Source Control, the terminal or Claude Code | Follows the editor's git change events. Each repo reloads about 1 s after changes stop, and the tree redraws only if something actually changed. |
+| **Changes** | Files change in a compared worktree (edits, saves, new or deleted files), or the git state of a compared repo changes | Watches the compared worktree folders, including ones not open in this window, plus git events for the repos involved. Re-runs about 1.5 s after changes stop and redraws only if the results differ. Turn off with `gitComparePlus.autoRefresh`. |
+| **Ages** (`3 h ago`, stale fetch) | Every minute | Redraw only, no git commands. |
+
+Changes inside `.git`, `node_modules`, `dist`, `build`, `out`, `coverage`, `cdk.out` and
+similar folders don't trigger a re-run.
+
+**When a background refresh fails** (for example git's `index.lock` held during a rebase, or a
+worktree folder deleted from under the view), the view keeps showing what it had, and says so:
+
+- The message bar at the top of the view reads `⚠ Couldn't refresh <repo or comparison> (2 min
+  ago): <reason>. Showing earlier results; Refresh to retry.` In Repositories, the affected repo
+  also gets a warning icon.
+- No popup appears for a one-off failure; most clear up on the next refresh a second later.
+- If it keeps failing (3 times in a row, or for a minute), **one** notification appears for that
+  run of failures, with **Show Log** plus **Refresh** (Repositories) or **Turn Off
+  Auto-Refresh** (Changes). It won't appear again until a refresh has succeeded.
+- The next successful refresh, automatic or manual, removes the message without a popup.
+- Errors from actions you start yourself (compare, fetch, delete…) still show immediately.
+
+**Fetching is never automatic:** it contacts your git host using your credentials. If the editor's
+own `git.autofetch` is on, the remote branches it fetches show up here automatically.
+
+## Settings
+
 | Setting                            | Default            | Meaning                                                             |
 | ---------------------------------- | ------------------ | ------------------------------------------------------------------- |
-| `branchCompare.includeUncommitted` | `true`             | Start worktree comparisons with uncommitted edits included.         |
-| `branchCompare.includeUntracked`   | `true`             | Treat never-added files as uncommitted edits (shown, or counted).   |
-| `branchCompare.compareMode`        | `sinceBranchPoint` | Starting mode: `sinceBranchPoint` or `allDifferences`.               |
-| `branchCompare.staleFetchHours`    | `24`               | After this many hours without a fetch, a repo is flagged as out of date. |
-| `branchCompare.remote`             | `origin`           | Remote whose HEAD branch is the default branch (`upstream` for forks). |
-| `branchCompare.defaultBranches`    | `{}`               | Per-repo default branch, keyed by folder name or main-worktree path: `{ "api": "upstream/develop" }`. |
-| `branchCompare.blame.currentLine`  | `true`             | Blame note at the end of the current line, with its hover and actions. |
-| `branchCompare.blame.statusBar`    | `true`             | Author and age of the current line in the status bar.               |
-| `branchCompare.changesLayout`      | `list`             | Changes view layout: `list` or `tree` (folders). Title bar toggles it. |
-| `branchCompare.autoRefresh`        | `true`             | Re-run the comparison in Changes automatically when its inputs change.   |
+| `gitComparePlus.includeUncommitted` | `true`             | Start worktree comparisons with uncommitted edits included.         |
+| `gitComparePlus.includeUntracked`   | `true`             | Treat never-added files as uncommitted edits (shown, or counted).   |
+| `gitComparePlus.compareMode`        | `sinceBranchPoint` | Starting mode: `sinceBranchPoint` or `allDifferences`.               |
+| `gitComparePlus.staleFetchHours`    | `24`               | After this many hours without a fetch, a repo is flagged as out of date. |
+| `gitComparePlus.remote`             | `origin`           | Remote whose HEAD branch is the default branch (`upstream` for forks). |
+| `gitComparePlus.defaultBranches`    | `{}`               | Per-repo default branch, keyed by folder name or main-worktree path: `{ "api": "upstream/develop" }`. |
+| `gitComparePlus.blame.currentLine`  | `true`             | Blame note at the end of the current line, with its hover and actions. |
+| `gitComparePlus.blame.statusBar`    | `true`             | Author and age of the current line in the status bar.               |
+| `gitComparePlus.changesLayout`      | `list`             | Changes view layout: `list` or `tree` (folders). Title bar toggles it. |
+| `gitComparePlus.autoRefresh`        | `true`             | Re-run the comparison in Changes automatically when its inputs change.   |
 
-Logs are under **View → Output → Git Branch & Worktree Compare**. For more detail, run
+Logs are under **View → Output → Git Compare+**. For more detail, run
 **Developer: Set Log Level…** and choose Debug.
 
-## Develop
+## Lightweight by design
 
-```bash
-npm install
-npm test          # vitest: unit tests + real-git integration tests (temp repos, worktrees, a local bare "remote")
-npm run build     # type check (tsc --noEmit) + esbuild bundle → dist/extension.js
-npm run package   # minified build + branch-compare.vsix
-npm run budget    # fail if the bundle or the .vsix is over its size budget
-npm run test:host # downloads VS Code 1.90 into .vscode-test/, activates the extension in it,
-                  # checks it activates only after startup, every command is registered,
-                  # and activate() is within its time budget
-npm run generate:icons   # rewrite media/diff-bar/*.svg after changing src/views/diffBar.ts
-```
+| | Git Compare+ 1.0.0 |
+| --- | --- |
+| Download size | about 77 KB (one 138 KB bundle, no runtime dependencies) |
+| Startup cost | none: it activates after the editor has finished starting; `activate()` itself takes a few milliseconds |
+| Network | only when you click Fetch; no telemetry, no account |
+| Background work | git runs only for what's on screen: a shown comparison, an open History view, the current line's blame |
 
-CI (`.github/workflows/ci.yml`) runs all of these on macOS, Linux and Windows.
+The size budget (`npm run budget`) and the activation check (`npm run test:host`) run in CI on
+macOS, Linux and Windows.
 
-Install or update it in each Cursor profile that should have it, then run **Developer: Reload Window**:
+## Known limitations
 
-```bash
-/Applications/Cursor.app/Contents/Resources/app/bin/cursor --install-extension branch-compare.vsix --profile <your-profile> --force
-```
+- Developed and tested by hand on macOS. Linux and Windows are covered by the automated tests in
+  CI, but haven't been tried by hand yet.
+- Line history uses the committed version's line numbers; if you've edited the file since, the
+  selected lines may have moved.
+- No commit graph, interactive rebase editor or pull-request integration.
 
-```bash
-/Applications/Cursor.app/Contents/Resources/app/bin/cursor --install-extension branch-compare.vsix --profile <your-profile> --force
-```
+## Contributing
 
-`--profile` matters. Without it, the extension goes into the Default profile, but Cursor opens
-`my-services.code-workspace` with **<your-profile>**.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for building, testing, and how the code is organised.
 
-**VS Code** (1.90 or later) works the same way. The extension only uses the standard VS Code
-API and VS Code's built-in Git extension, and nothing in it is specific to Cursor. Install with
-VS Code's own command (VS Code profiles are separate from Cursor's):
+## License
 
-```bash
-"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension branch-compare.vsix --force
-```
-
-## Layout
-
-| Path                            | Role                                                                 |
-| ------------------------------- | -------------------------------------------------------------------- |
-| `src/extension.ts`              | Activation, commands, branch picker, opening diffs                   |
-| `src/comparison.ts`             | Comparison logic: subjects, bases, modes, uncommitted handling — no `vscode` import |
-| `src/git/gitCli.ts`             | Runs git commands: worktrees, branches, diffs, file contents, worktree snapshots, fetch |
-| `src/git/parsers.ts`            | Pure parsers for git's output                                        |
-| `src/repoDiscovery.ts`          | Finds repos via the built-in git extension, with workspace folders as fallback |
-| `src/repos.ts`                  | Groups worktrees under their repo                                    |
-| `src/views/repositoriesView.ts` | Repositories tree                                                    |
-| `src/views/changesView.ts`      | Changes tree + A/M/D/R/U badges                                      |
-| `src/views/changesHeader.ts`    | Wording of the three header rows (subject / base / mode)             |
-| `src/views/diffBar.ts`          | Green/red diff-bar icons and the coloured hover; `npm run generate:icons` writes `media/diff-bar/` |
-| `src/views/commitText.ts`       | Wording of the Commits group and commit rows                          |
-| `src/views/fileTree.ts`         | Groups changed files into compacted folders for the tree layout       |
-| `src/swapSides.ts`              | Swap Sides: subject ↔ base, keeping each side's uncommitted choice    |
-| `src/views/lineStatsText.ts`    | Wording of `+12 −3` line counts (files, repo rows, view title)       |
-| `src/review/fingerprints.ts`    | Identity of each file's diff (blob IDs of both sides) for reviewed marks |
-| `src/review/reviewStore.ts`     | Reviewed marks saved per repo, pinned to a diff fingerprint          |
-| `src/review/reviewToggles.ts`   | Groups checkbox changes into store writes                            |
-| `src/baseStore.ts`              | Comparison base saved per repo                                       |
-| `src/gitActions.ts`             | Fetch, create/remove worktree, create/delete/switch branch, with their confirmation dialogs |
-| `src/operations.ts`             | Safety checks for those actions (counts of what would be lost), naming rules, fetch age |
-| `src/views/content.ts`          | `branch-compare:` documents (file content at a revision)             |
-| `src/aheadBehind.ts`            | Commits ahead of / behind the default Against for each row (`↑3 ↓12`) |
-| `src/commits/commitSearch.ts`   | Search kinds and their `git log` arguments                              |
-| `src/commits/commitsView.ts`    | Commits view: search results and expandable commit details            |
-| `src/commits/commitActions.ts`  | The actions every commit list shares (review, select/compare, copy, …) |
-| `src/commits/commitTarget.ts`   | "A commit in a repo", the shape all commit lists hand to those actions |
-| `src/history/historyModel.ts`   | History: previous version of each entry, ◀ ▶ stepping, wording          |
-| `src/history/historyView.ts`    | History view, its commit comparisons, and the ◀ ▶ editor buttons       |
-| `src/blame/blameController.ts`  | Current-line blame: end-of-line note, hover, status bar, hover actions |
-| `src/blame/blameText.ts`        | Wording of the blame note, status text and hover (escaped, with command links) |
-| `src/views/commitDiff.ts`       | Open one commit's changes in a multi-file diff (Commits group, blame)  |
-| `src/stashes.ts`                | A stash's files (tracked + untracked), its wording, the Drop confirmation |
-| `src/branchLocation.ts`         | Where a branch is checked out, and what Open… offers for it            |
-| `src/goTo.ts`                   | Go to… entries, and which worktree the status bar describes           |
-| `src/views/worktreeStatus.ts`   | The status bar item and the Go to… picker                             |
-| `src/sideChoices.ts`            | The grouped choices for "What do you want to review?" / "Compare it with…" |
-| `src/views/sidePicker.ts`       | Renders those choices as a quick pick; Search commits…; typed refs    |
-| `src/paths.ts`                  | Path comparison (separators, Windows case) and short path display     |
-| `src/defaultBranch.ts`          | Which branch is a repo's default: remote setting, per-repo overrides, fallbacks |
-| `src/treeOrder.ts`              | Order of worktrees and branches: default/main/master first, then newest |
-| `src/branchCandidates.ts`       | Order of branch names when comparing several repos at once          |
-| `src/logger.ts`                 | Structured logging to an output channel                              |
-| `src/autoRefresh/gitEvents.ts`  | Follows Cursor's git change events, waiting for changes to stop per repo |
-| `src/autoRefresh/changesAutoRefresh.ts` | Re-runs Changes: folder watchers + git events → one non-overlapping re-run |
-| `src/autoRefresh/scheduling.ts` | Waiting for changes to stop, combining overlapping re-runs, change detection |
-| `src/autoRefresh/watchPaths.ts` | Which folders are watched and which changes are ignored             |
-| `src/autoRefresh/failureTracker.ts` | Background-failure tracking: when to show the stale message, when to notify once |
-
-## Design notes
-
-- **Git is run directly, not through the editor's git API.** The built-in API only knows repos
-  that are open in the window. Linked worktrees (for example `.claude/worktrees/*`) usually
-  aren't, so it can't list or read them. The built-in extension is still used to discover repos
-  and to find the git binary.
-- **Default branch** (`src/defaultBranch.ts`): a `branchCompare.defaultBranches` override if one
-  exists, otherwise `<remote>/HEAD` (`branchCompare.remote`, default `origin`), falling back to
-  `<remote>/main`, `<remote>/master`, `main`, then `master`. An override naming a branch that
-  doesn't exist is logged and ignored. To fix a repo where `<remote>/HEAD` isn't set, run
-  `git remote set-head <remote> --auto`.
-- **Activates after startup, never during it.** The only activation event is `onStartupFinished`,
-  so blame and the status bar are ready once a file is open, without delaying the editor's start.
-  Activation itself does no git work beyond finding the repositories; `npm run test:host` checks
-  the activation event and that `activate()` stays within its budget. Locally `activate()` takes a
-  few milliseconds; finding the repositories continues in the background after it returns.
-- **Blame is cached per file version** (`src/blame/blameController.ts`). The editor's text goes to
-  `git blame --incremental --contents -`, so unsaved edits don't shift the lines below them.
-  Moving the cursor re-reads the cache. A git change in any repo clears it.
-- **Automatic refresh redraws only when something changed.** Cursor reports a repo change after
-  every `git status` it runs, including on window focus. Comparing results before redrawing keeps
-  the tree still. It also stops the comparison triggering itself: a base snapshot writes git
-  objects, which can prompt one more status run, and the re-run that follows finds identical
-  results and stops.
-- **Reviewed marks are pinned to blob IDs, not revisions.** A file's fingerprint is the base-side
-  blob plus the subject-side blob (files on disk are hashed the way `git hash-object` does). A
-  revision changes for reasons unrelated to the file, such as another commit or any edit in a
-  snapshot base, and would reset every mark. A blob ID changes only when that file does. In
-  repos with clean filters (`core.autocrlf`, LFS), the hash on disk can differ from the committed
-  blob, so a mark made with uncommitted edits included may not carry over to "committed only".
-- **Git commands run with `GIT_OPTIONAL_LOCKS=0`** so they don't fight the editor's background
-  `git status` for `index.lock`.
-- **Credentials embedded in remote URLs are redacted** (`https://user:token@…` →
-  `https://<redacted>@…`) before git's error output reaches the logs or an error message.
-- **Destructive actions always check first, then confirm, then act** (`operations.ts` →
-  modal dialog → git). Git's "force" options are only used after you confirm exactly what will
-  be lost.
-- **Context menus** depend on each item's state. Tree items carry flags such as
-  `comparable.branch.local.checkedOut.base`, and `package.json` matches them with regexes;
-  `test/menus.test.ts` checks each action appears exactly where it should.
+[MIT](LICENSE) © Blaazin Software Consulting Inc.

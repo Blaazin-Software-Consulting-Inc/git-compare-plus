@@ -100,16 +100,15 @@ the outcome is always stated before anything happens.
 - Every commit list (Commits group, history, search results) offers the same comparison actions
   as Phase 4.
 
-### Phase 6: Stashes (done, awaiting review)
+### Phase 6: Stashes (done)
 
 - List stashes; show a stash's changes; apply, pop, and drop (drop confirms first).
 
-### Release prep, then 1.0
+### Release prep, then 1.0 (prepared, awaiting review; not published)
 
-- Final name (the current name is too narrow for blame and history), checked for marketplace and
-  GitHub conflicts.
-- Repository `Blaazin-Software-Consulting-Inc/<name>`; publisher ID and copyright for Blaazin
-  Software Consulting Inc.
+- Name: **Git Compare+** (`git-compare-plus`); settings, commands and views use `gitComparePlus.`.
+- Repository `Blaazin-Software-Consulting-Inc/git-compare-plus`; publisher `blaazinsoftware`;
+  MIT, copyright Blaazin Software Consulting Inc.
 - LICENSE, CHANGELOG, a public README with a three-step quick start and screenshots, a
   marketplace icon, and the untrusted-workspace declaration.
 - Measured size and load-time numbers in the README before claiming "lightweight".

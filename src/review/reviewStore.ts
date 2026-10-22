@@ -16,7 +16,7 @@
  */
 import type { KeyValueStore } from '../baseStore';
 
-const STORAGE_KEY = 'branchCompare.reviewedByRepo';
+const STORAGE_KEY = 'gitComparePlus.reviewedByRepo';
 // Plenty for several long-lived worktrees' worth of reviews; ~150 bytes each → well under 1 MB.
 const MAX_MARKS_PER_REPO = 5000;
 

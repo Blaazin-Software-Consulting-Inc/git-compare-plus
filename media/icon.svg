@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="48" fill="#1f2328"/>
+  <!-- Same design as scripts/generate-icon.mjs, which draws media/icon.png; change both together. -->
+  <!-- Two branches: a trunk on the left, a branch curving off to the right. -->
+  <g fill="none" stroke="#e6edf3" stroke-width="14" stroke-linecap="round">
+    <path d="M72 58v140"/>
+    <path d="M72 158C72 114 144 118 144 78"/>
+  </g>
+  <circle cx="72" cy="58" r="18" fill="#1f2328" stroke="#e6edf3" stroke-width="12"/>
+  <circle cx="72" cy="198" r="18" fill="#1f2328" stroke="#e6edf3" stroke-width="12"/>
+  <circle cx="144" cy="70" r="18" fill="#1f2328" stroke="#e6edf3" stroke-width="12"/>
+  <!-- The "+": compare, plus more. -->
+  <g stroke="#3fb950" stroke-width="14" stroke-linecap="round">
+    <path d="M196 52v44"/>
+    <path d="M174 74h44"/>
+  </g>
+  <!-- Diff bar: three green, two red squares, as on each changed file. -->
+  <rect x="112" y="174" width="20" height="28" rx="4" fill="#3fb950"/>
+  <rect x="138" y="174" width="20" height="28" rx="4" fill="#3fb950"/>
+  <rect x="164" y="174" width="20" height="28" rx="4" fill="#3fb950"/>
+  <rect x="190" y="174" width="20" height="28" rx="4" fill="#f85149"/>
+  <rect x="216" y="174" width="20" height="28" rx="4" fill="#f85149"/>
+</svg>

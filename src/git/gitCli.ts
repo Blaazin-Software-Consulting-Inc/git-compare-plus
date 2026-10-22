@@ -97,7 +97,7 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
   /**
    * @param gitPath - git binary; the built-in git extension's resolved path so both agree.
    * @param logger - receives DEBUG lines per command (args, duration).
-   * @param defaultBranchSettings - reads `branchCompare.remote` / `branchCompare.defaultBranches`
+   * @param defaultBranchSettings - reads `gitComparePlus.remote` / `gitComparePlus.defaultBranches`
    *   on each call, so a settings change applies on the next refresh without a restart.
    */
   constructor(
@@ -136,7 +136,7 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
    * The repo's default branch (see src/defaultBranch.ts): a per-repo override when one is set and
    * exists; otherwise `<remote>/HEAD` (normal for clones); otherwise the first existing of
    * `<remote>/main`, `<remote>/master`, `main`, `master`. `<remote>` is `origin` unless the
-   * `branchCompare.remote` setting says otherwise.
+   * `gitComparePlus.remote` setting says otherwise.
    * @returns a ref name, or `undefined` when none of those exist.
    */
   async defaultBranch(cwd: string): Promise<string | undefined> {
@@ -497,7 +497,7 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
    */
   async snapshotWorktree(root: string, includeUntracked: boolean): Promise<string> {
     const realIndex = (await this.run(root, ['rev-parse', '--path-format=absolute', '--git-path', 'index'])).trim();
-    const tempDir = await mkdtemp(path.join(tmpdir(), 'branch-compare-index-'));
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'git-compare-plus-index-'));
     const tempIndex = path.join(tempDir, 'index');
     const env = { env: { GIT_INDEX_FILE: tempIndex } };
     try {

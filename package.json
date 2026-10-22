@@ -1,23 +1,41 @@
 {
-  "name": "branch-compare",
-  "displayName": "Git Branch & Worktree Compare",
-  "description": "Compare git worktrees and branches with main (or any branch) and review the changed files side by side. Works with a single repository or many repositories in one window.",
-  "version": "0.9.0",
-  "publisher": "local",
-  "private": true,
-  "license": "UNLICENSED",
+  "name": "git-compare-plus",
+  "displayName": "Git Compare+",
+  "description": "Compare worktrees, branches, tags and commits side by side, with blame, file and line history, commit search and stashes. Lightweight: no account, no telemetry. For VS Code and Cursor.",
+  "version": "1.0.0",
+  "publisher": "blaazinsoftware",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Blaazin-Software-Consulting-Inc/git-compare-plus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Blaazin-Software-Consulting-Inc/git-compare-plus/issues"
+  },
+  "homepage": "https://github.com/Blaazin-Software-Consulting-Inc/git-compare-plus#readme",
+  "galleryBanner": {
+    "color": "#1f2328",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
-    "SCM Providers"
+    "SCM Providers",
+    "Visualization",
+    "Other"
   ],
   "keywords": [
     "git",
     "worktree",
     "branch",
-    "diff",
     "compare",
+    "diff",
+    "blame",
+    "history",
+    "stash",
+    "code review",
     "multi-root"
   ],
   "main": "./dist/extension.js",
@@ -27,33 +45,43 @@
   "extensionDependencies": [
     "vscode.git"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Git Compare+ runs git in the workspace's folders, and git can run programs named in a repository's own configuration (hooks, fsmonitor). Trust the folder to use it."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Git Compare+ needs the repository's files on disk to run git."
+    }
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "branchCompare",
-          "title": "Git Branch & Worktree Compare",
+          "id": "gitComparePlus",
+          "title": "Git Compare+",
           "icon": "media/activity-icon.svg"
         }
       ]
     },
     "views": {
-      "branchCompare": [
+      "gitComparePlus": [
         {
-          "id": "branchCompare.repositories",
+          "id": "gitComparePlus.repositories",
           "name": "Repositories"
         },
         {
-          "id": "branchCompare.changes",
+          "id": "gitComparePlus.changes",
           "name": "Changes"
         },
         {
-          "id": "branchCompare.history",
+          "id": "gitComparePlus.history",
           "name": "History",
           "visibility": "collapsed"
         },
         {
-          "id": "branchCompare.commits",
+          "id": "gitComparePlus.commits",
           "name": "Commits",
           "visibility": "collapsed"
         }
@@ -61,951 +89,951 @@
     },
     "viewsWelcome": [
       {
-        "view": "branchCompare.changes",
-        "contents": "Nothing compared yet.\n\n[Compare…](command:branchCompare.compareTwo)\n\nPicks what to review, then what to compare it against. Or, in Repositories, click $(git-compare) next to a worktree or branch to review it against its repo's default branch.\n\n[Compare All Repos With Default Branch](command:branchCompare.compareAll)"
+        "view": "gitComparePlus.changes",
+        "contents": "Nothing compared yet.\n\n[Compare…](command:gitComparePlus.compareTwo)\n\nPicks what to review, then what to compare it against. Or, in Repositories, click $(git-compare) next to a worktree or branch to review it against its repo's default branch.\n\n[Compare All Repos With Default Branch](command:gitComparePlus.compareAll)"
       },
       {
-        "view": "branchCompare.commits",
-        "contents": "Search commits by message, author, file, changed text or ID, on every branch and tag.\n\n[Search Commits…](command:branchCompare.commits.search)\n\nShow Commit Details on any commit (in Changes or History) opens it here."
+        "view": "gitComparePlus.commits",
+        "contents": "Search commits by message, author, file, changed text or ID, on every branch and tag.\n\n[Search Commits…](command:gitComparePlus.commits.search)\n\nShow Commit Details on any commit (in Changes or History) opens it here."
       }
     ],
     "commands": [
       {
-        "command": "branchCompare.refresh",
+        "command": "gitComparePlus.refresh",
         "title": "Refresh",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(refresh)"
       },
       {
-        "command": "branchCompare.compareAll",
+        "command": "gitComparePlus.compareAll",
         "title": "Compare All Repos With Default Branch",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(diff-multiple)"
       },
       {
-        "command": "branchCompare.compare",
+        "command": "gitComparePlus.compare",
         "title": "Review Against Default",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(git-compare)"
       },
       {
-        "command": "branchCompare.compareWith",
+        "command": "gitComparePlus.compareWith",
         "title": "Review Against…",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.setBase",
+        "command": "gitComparePlus.setBase",
         "title": "Use as Default Against",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(target)"
       },
       {
-        "command": "branchCompare.clearBase",
+        "command": "gitComparePlus.clearBase",
         "title": "Reset Default Against (use the default branch)",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(close)"
       },
       {
-        "command": "branchCompare.openWorktree",
+        "command": "gitComparePlus.openWorktree",
         "title": "Open Worktree in New Window",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(empty-window)"
       },
       {
-        "command": "branchCompare.openChange",
+        "command": "gitComparePlus.openChange",
         "title": "Open Change",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.openAllChanges",
+        "command": "gitComparePlus.openAllChanges",
         "title": "Open All Changes",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(diff-multiple)"
       },
       {
-        "command": "branchCompare.openBranch",
+        "command": "gitComparePlus.openBranch",
         "title": "Open…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(window)"
       },
       {
-        "command": "branchCompare.goTo",
+        "command": "gitComparePlus.goTo",
         "title": "Go to Worktree or Branch…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(list-tree)"
       },
       {
-        "command": "branchCompare.compareTwo",
+        "command": "gitComparePlus.compareTwo",
         "title": "Compare…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(git-compare)"
       },
       {
-        "command": "branchCompare.changeSubject",
+        "command": "gitComparePlus.changeSubject",
         "title": "Change What Is Reviewed…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(list-selection)"
       },
       {
-        "command": "branchCompare.changeDefaultBase",
+        "command": "gitComparePlus.changeDefaultBase",
         "title": "Change Default Against…",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.viewAsTree",
+        "command": "gitComparePlus.viewAsTree",
         "title": "View as Tree",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(list-tree)"
       },
       {
-        "command": "branchCompare.viewAsList",
+        "command": "gitComparePlus.viewAsList",
         "title": "View as List",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(list-flat)"
       },
       {
-        "command": "branchCompare.swapSides",
+        "command": "gitComparePlus.swapSides",
         "title": "Swap Sides",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(arrow-swap)"
       },
       {
-        "command": "branchCompare.openFile",
+        "command": "gitComparePlus.openFile",
         "title": "Open File",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(go-to-file)"
       },
       {
-        "command": "branchCompare.openFileAtBase",
+        "command": "gitComparePlus.openFileAtBase",
         "title": "Open File at Base",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.openCommit",
+        "command": "gitComparePlus.openCommit",
         "title": "Open Commit",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.compareWithCommit",
+        "command": "gitComparePlus.compareWithCommit",
         "title": "Compare With This Commit (show only what came after)",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.rerun",
+        "command": "gitComparePlus.rerun",
         "title": "Refresh Comparison",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(refresh)"
       },
       {
-        "command": "branchCompare.changeBase",
+        "command": "gitComparePlus.changeBase",
         "title": "Change What It Is Compared Against…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(git-compare)"
       },
       {
-        "command": "branchCompare.toggleUncommitted",
+        "command": "gitComparePlus.toggleUncommitted",
         "title": "Include / Exclude Uncommitted Edits",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(edit)"
       },
       {
-        "command": "branchCompare.toggleMode",
+        "command": "gitComparePlus.toggleMode",
         "title": "Switch: Since Branch Point / All Differences",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(git-merge)"
       },
       {
-        "command": "branchCompare.clear",
+        "command": "gitComparePlus.clear",
         "title": "Clear Comparison",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(clear-all)"
       },
       {
-        "command": "branchCompare.fetch",
+        "command": "gitComparePlus.fetch",
         "title": "Fetch",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "branchCompare.fetchAll",
+        "command": "gitComparePlus.fetchAll",
         "title": "Fetch All Repos",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "branchCompare.fetchAndRerun",
+        "command": "gitComparePlus.fetchAndRerun",
         "title": "Fetch and Refresh Comparison",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "branchCompare.createWorktree",
+        "command": "gitComparePlus.createWorktree",
         "title": "Create Worktree…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(new-folder)"
       },
       {
-        "command": "branchCompare.removeWorktree",
+        "command": "gitComparePlus.removeWorktree",
         "title": "Remove Worktree(s)…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(trash)"
       },
       {
-        "command": "branchCompare.createBranch",
+        "command": "gitComparePlus.createBranch",
         "title": "Create Branch From Here…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(git-branch-create)"
       },
       {
-        "command": "branchCompare.deleteBranch",
+        "command": "gitComparePlus.deleteBranch",
         "title": "Delete Branch(es)…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(trash)"
       },
       {
-        "command": "branchCompare.switchBranch",
+        "command": "gitComparePlus.switchBranch",
         "title": "Switch Main Worktree to This Branch",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.deleteSelected",
+        "command": "gitComparePlus.deleteSelected",
         "title": "Delete Selected Branches / Remove Selected Worktrees…",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.history.showFile",
+        "command": "gitComparePlus.history.showFile",
         "title": "Show File History",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(history)"
       },
       {
-        "command": "branchCompare.history.showLines",
+        "command": "gitComparePlus.history.showLines",
         "title": "Show Line History",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.history.openDiff",
+        "command": "gitComparePlus.history.openDiff",
         "title": "Compare with Previous",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(diff)"
       },
       {
-        "command": "branchCompare.history.compareWithWorkingTree",
+        "command": "gitComparePlus.history.compareWithWorkingTree",
         "title": "Compare with Working Tree",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(file)"
       },
       {
-        "command": "branchCompare.history.compareWithBranch",
+        "command": "gitComparePlus.history.compareWithBranch",
         "title": "Compare with Branch, Tag or Commit…",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.history.selectForCompare",
+        "command": "gitComparePlus.history.selectForCompare",
         "title": "Select for Compare",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.history.compareWithSelected",
+        "command": "gitComparePlus.history.compareWithSelected",
         "title": "Compare with Selected",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.history.compareTwo",
+        "command": "gitComparePlus.history.compareTwo",
         "title": "Compare These Two",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.previousRevision",
+        "command": "gitComparePlus.previousRevision",
         "title": "Previous Version of This File",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(chevron-left)"
       },
       {
-        "command": "branchCompare.nextRevision",
+        "command": "gitComparePlus.nextRevision",
         "title": "Next Version of This File",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(chevron-right)"
       },
       {
-        "command": "branchCompare.commits.search",
+        "command": "gitComparePlus.commits.search",
         "title": "Search Commits…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(search)"
       },
       {
-        "command": "branchCompare.commits.openFile",
+        "command": "gitComparePlus.commits.openFile",
         "title": "Open Change",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.commits.clear",
+        "command": "gitComparePlus.commits.clear",
         "title": "Clear",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(clear-all)"
       },
       {
-        "command": "branchCompare.commit.showDetails",
+        "command": "gitComparePlus.commit.showDetails",
         "title": "Show Commit Details",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(info)"
       },
       {
-        "command": "branchCompare.commit.openAll",
+        "command": "gitComparePlus.commit.openAll",
         "title": "Open Commit (all files)",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.commit.reviewCommit",
+        "command": "gitComparePlus.commit.reviewCommit",
         "title": "Review This Commit",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.commit.reviewSince",
+        "command": "gitComparePlus.commit.reviewSince",
         "title": "Review Changes Since This Commit",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.commit.reviewAgainst",
+        "command": "gitComparePlus.commit.reviewAgainst",
         "title": "Review This Commit Against…",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.commit.select",
+        "command": "gitComparePlus.commit.select",
         "title": "Select Commit for Compare",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.commit.compareWithSelected",
+        "command": "gitComparePlus.commit.compareWithSelected",
         "title": "Review Against Selected Commit",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.commit.compareTwo",
+        "command": "gitComparePlus.commit.compareTwo",
         "title": "Compare These Two Commits",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.commit.copyId",
+        "command": "gitComparePlus.commit.copyId",
         "title": "Copy Commit ID",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.stash.openAll",
+        "command": "gitComparePlus.stash.openAll",
         "title": "Open Stash Changes",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(diff-multiple)"
       },
       {
-        "command": "branchCompare.stash.apply",
+        "command": "gitComparePlus.stash.apply",
         "title": "Apply Stash (keep it)",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(check)"
       },
       {
-        "command": "branchCompare.stash.pop",
+        "command": "gitComparePlus.stash.pop",
         "title": "Pop Stash (apply and remove)",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       },
       {
-        "command": "branchCompare.stash.drop",
+        "command": "gitComparePlus.stash.drop",
         "title": "Drop Stash…",
-        "category": "Branch & Worktree Compare",
+        "category": "Git Compare+",
         "icon": "$(trash)"
       },
       {
-        "command": "branchCompare.stash.openFile",
+        "command": "gitComparePlus.stash.openFile",
         "title": "Open Change",
-        "category": "Branch & Worktree Compare"
+        "category": "Git Compare+"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "branchCompare.compareTwo",
-          "when": "view == branchCompare.repositories",
+          "command": "gitComparePlus.compareTwo",
+          "when": "view == gitComparePlus.repositories",
           "group": "navigation@0"
         },
         {
-          "command": "branchCompare.compareAll",
-          "when": "view == branchCompare.repositories",
+          "command": "gitComparePlus.compareAll",
+          "when": "view == gitComparePlus.repositories",
           "group": "navigation@1"
         },
         {
-          "command": "branchCompare.fetchAll",
-          "when": "view == branchCompare.repositories",
+          "command": "gitComparePlus.fetchAll",
+          "when": "view == gitComparePlus.repositories",
           "group": "navigation@1"
         },
         {
-          "command": "branchCompare.refresh",
-          "when": "view == branchCompare.repositories",
+          "command": "gitComparePlus.refresh",
+          "when": "view == gitComparePlus.repositories",
           "group": "navigation@2"
         },
         {
-          "command": "branchCompare.openAllChanges",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "command": "gitComparePlus.openAllChanges",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison",
           "group": "navigation@1"
         },
         {
-          "command": "branchCompare.rerun",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "command": "gitComparePlus.rerun",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison",
           "group": "navigation@2"
         },
         {
-          "command": "branchCompare.clear",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "command": "gitComparePlus.clear",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison",
           "group": "navigation@3"
         },
         {
-          "command": "branchCompare.viewAsTree",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison && branchCompare.changesLayout != tree",
+          "command": "gitComparePlus.viewAsTree",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison && gitComparePlus.changesLayout != tree",
           "group": "navigation@4"
         },
         {
-          "command": "branchCompare.viewAsList",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison && branchCompare.changesLayout == tree",
+          "command": "gitComparePlus.viewAsList",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison && gitComparePlus.changesLayout == tree",
           "group": "navigation@4"
         },
         {
-          "command": "branchCompare.changeBase",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "command": "gitComparePlus.changeBase",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison",
           "group": "1_setup@1"
         },
         {
-          "command": "branchCompare.swapSides",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "command": "gitComparePlus.swapSides",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison",
           "group": "1_setup@4"
         },
         {
-          "command": "branchCompare.changeSubject",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "command": "gitComparePlus.changeSubject",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison",
           "group": "1_setup@0"
         },
         {
-          "command": "branchCompare.toggleUncommitted",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "command": "gitComparePlus.toggleUncommitted",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison",
           "group": "1_setup@2"
         },
         {
-          "command": "branchCompare.toggleMode",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "command": "gitComparePlus.toggleMode",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison",
           "group": "1_setup@3"
         },
         {
-          "command": "branchCompare.fetchAndRerun",
-          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "command": "gitComparePlus.fetchAndRerun",
+          "when": "view == gitComparePlus.changes && gitComparePlus.hasComparison",
           "group": "navigation@2"
         },
         {
-          "command": "branchCompare.history.showFile",
-          "when": "view == branchCompare.history",
+          "command": "gitComparePlus.history.showFile",
+          "when": "view == gitComparePlus.history",
           "group": "navigation@1"
         },
         {
-          "command": "branchCompare.commits.search",
-          "when": "view == branchCompare.commits",
+          "command": "gitComparePlus.commits.search",
+          "when": "view == gitComparePlus.commits",
           "group": "navigation@1"
         },
         {
-          "command": "branchCompare.commits.clear",
-          "when": "view == branchCompare.commits",
+          "command": "gitComparePlus.commits.clear",
+          "when": "view == gitComparePlus.commits",
           "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "branchCompare.changeSubject",
-          "when": "view == branchCompare.changes && viewItem =~ /^header\\.subject$/",
+          "command": "gitComparePlus.changeSubject",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^header\\.subject$/",
           "group": "inline@1"
         },
         {
-          "command": "branchCompare.swapSides",
-          "when": "view == branchCompare.changes && viewItem =~ /^header\\.(subject|base)$/",
+          "command": "gitComparePlus.swapSides",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^header\\.(subject|base)$/",
           "group": "inline@2"
         },
         {
-          "command": "branchCompare.changeDefaultBase",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.repo/",
+          "command": "gitComparePlus.changeDefaultBase",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.repo/",
           "group": "2_base@0"
         },
         {
-          "command": "branchCompare.openBranch",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.branch/",
+          "command": "gitComparePlus.openBranch",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.branch/",
           "group": "inline@2"
         },
         {
-          "command": "branchCompare.openBranch",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.branch/",
+          "command": "gitComparePlus.openBranch",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.branch/",
           "group": "0_open@1"
         },
         {
-          "command": "branchCompare.openFile",
-          "when": "view == branchCompare.changes && viewItem =~ /^changedFile\\.(?!deleted$)/",
+          "command": "gitComparePlus.openFile",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^changedFile\\.(?!deleted$)/",
           "group": "inline@1"
         },
         {
-          "command": "branchCompare.openFile",
-          "when": "view == branchCompare.changes && viewItem =~ /^changedFile\\.(?!deleted$)/",
+          "command": "gitComparePlus.openFile",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^changedFile\\.(?!deleted$)/",
           "group": "1_open@1"
         },
         {
-          "command": "branchCompare.openFileAtBase",
-          "when": "view == branchCompare.changes && viewItem =~ /^changedFile\\.(?!(added|untracked)$)/",
+          "command": "gitComparePlus.openFileAtBase",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^changedFile\\.(?!(added|untracked)$)/",
           "group": "1_open@2"
         },
         {
-          "command": "branchCompare.openCommit",
-          "when": "view == branchCompare.changes && viewItem =~ /^commit$/",
+          "command": "gitComparePlus.openCommit",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^commit$/",
           "group": "1_commit@1"
         },
         {
-          "command": "branchCompare.compareWithCommit",
-          "when": "view == branchCompare.changes && viewItem =~ /^commit$/",
+          "command": "gitComparePlus.compareWithCommit",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^commit$/",
           "group": "1_commit@2"
         },
         {
-          "command": "branchCompare.compare",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable/",
+          "command": "gitComparePlus.compare",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable/",
           "group": "inline@1"
         },
         {
-          "command": "branchCompare.openWorktree",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.worktree(\\.base)?$/",
+          "command": "gitComparePlus.openWorktree",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.worktree(\\.base)?$/",
           "group": "inline@2"
         },
         {
-          "command": "branchCompare.compare",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable/",
+          "command": "gitComparePlus.compare",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable/",
           "group": "1_compare@1"
         },
         {
-          "command": "branchCompare.compareWith",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable/",
+          "command": "gitComparePlus.compareWith",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable/",
           "group": "1_compare@2"
         },
         {
-          "command": "branchCompare.setBase",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.(worktree|branch)/ && viewItem =~ /^(?!.*\\.base$)/",
+          "command": "gitComparePlus.setBase",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.(worktree|branch)/ && viewItem =~ /^(?!.*\\.base$)/",
           "group": "2_base@1"
         },
         {
-          "command": "branchCompare.clearBase",
-          "when": "view == branchCompare.repositories && viewItem =~ /\\.(base|hasBase)$/",
+          "command": "gitComparePlus.clearBase",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /\\.(base|hasBase)$/",
           "group": "2_base@2"
         },
         {
-          "command": "branchCompare.openWorktree",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.worktree(\\.base)?$/",
+          "command": "gitComparePlus.openWorktree",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.worktree(\\.base)?$/",
           "group": "3_open@1"
         },
         {
-          "command": "branchCompare.fetch",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.repo/",
+          "command": "gitComparePlus.fetch",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.repo/",
           "group": "4_git@1"
         },
         {
-          "command": "branchCompare.createBranch",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable/",
+          "command": "gitComparePlus.createBranch",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable/",
           "group": "4_git@2"
         },
         {
-          "command": "branchCompare.createWorktree",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.branch\\.(remote|local(?!\\.checkedOut))/",
+          "command": "gitComparePlus.createWorktree",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.branch\\.(remote|local(?!\\.checkedOut))/",
           "group": "4_git@3"
         },
         {
-          "command": "branchCompare.switchBranch",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.branch\\.(remote|local(?!\\.checkedOut))/",
+          "command": "gitComparePlus.switchBranch",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.branch\\.(remote|local(?!\\.checkedOut))/",
           "group": "4_git@4"
         },
         {
-          "command": "branchCompare.removeWorktree",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.worktree(\\.base)?$/",
+          "command": "gitComparePlus.removeWorktree",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.worktree(\\.base)?$/",
           "group": "5_danger@1"
         },
         {
-          "command": "branchCompare.deleteBranch",
-          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.branch\\.local(?!\\.checkedOut)/",
+          "command": "gitComparePlus.deleteBranch",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.branch\\.local(?!\\.checkedOut)/",
           "group": "5_danger@2"
         },
         {
-          "command": "branchCompare.history.compareWithWorkingTree",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/",
+          "command": "gitComparePlus.history.compareWithWorkingTree",
+          "when": "view == gitComparePlus.history && viewItem =~ /^historyCommit$/",
           "group": "inline@1"
         },
         {
-          "command": "branchCompare.history.openDiff",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/",
+          "command": "gitComparePlus.history.openDiff",
+          "when": "view == gitComparePlus.history && viewItem =~ /^historyCommit$/",
           "group": "1_compare@1"
         },
         {
-          "command": "branchCompare.history.compareWithWorkingTree",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/",
+          "command": "gitComparePlus.history.compareWithWorkingTree",
+          "when": "view == gitComparePlus.history && viewItem =~ /^historyCommit$/",
           "group": "1_compare@2"
         },
         {
-          "command": "branchCompare.history.compareWithBranch",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/",
+          "command": "gitComparePlus.history.compareWithBranch",
+          "when": "view == gitComparePlus.history && viewItem =~ /^historyCommit$/",
           "group": "1_compare@3"
         },
         {
-          "command": "branchCompare.history.selectForCompare",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/",
+          "command": "gitComparePlus.history.selectForCompare",
+          "when": "view == gitComparePlus.history && viewItem =~ /^historyCommit$/",
           "group": "2_select@1"
         },
         {
-          "command": "branchCompare.history.compareWithSelected",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/ && branchCompare.historySelected",
+          "command": "gitComparePlus.history.compareWithSelected",
+          "when": "view == gitComparePlus.history && viewItem =~ /^historyCommit$/ && gitComparePlus.historySelected",
           "group": "2_select@2"
         },
         {
-          "command": "branchCompare.history.compareTwo",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/ && listMultiSelection",
+          "command": "gitComparePlus.history.compareTwo",
+          "when": "view == gitComparePlus.history && viewItem =~ /^historyCommit$/ && listMultiSelection",
           "group": "2_select@3"
         },
         {
-          "command": "branchCompare.commit.showDetails",
+          "command": "gitComparePlus.commit.showDetails",
           "when": "viewItem =~ /^(commit|historyCommit)$/",
           "group": "inline@3"
         },
         {
-          "command": "branchCompare.commit.showDetails",
+          "command": "gitComparePlus.commit.showDetails",
           "when": "viewItem =~ /^(commit|historyCommit)$/",
           "group": "5_commit@1"
         },
         {
-          "command": "branchCompare.commit.openAll",
+          "command": "gitComparePlus.commit.openAll",
           "when": "viewItem =~ /^(historyCommit|commitsCommit)$/",
           "group": "5_commit@2"
         },
         {
-          "command": "branchCompare.commit.reviewCommit",
+          "command": "gitComparePlus.commit.reviewCommit",
           "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/",
           "group": "6_review@1"
         },
         {
-          "command": "branchCompare.commit.reviewSince",
+          "command": "gitComparePlus.commit.reviewSince",
           "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/",
           "group": "6_review@2"
         },
         {
-          "command": "branchCompare.commit.reviewAgainst",
+          "command": "gitComparePlus.commit.reviewAgainst",
           "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/",
           "group": "6_review@3"
         },
         {
-          "command": "branchCompare.commit.select",
+          "command": "gitComparePlus.commit.select",
           "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/",
           "group": "7_select@1"
         },
         {
-          "command": "branchCompare.commit.compareWithSelected",
-          "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/ && branchCompare.commitSelected",
+          "command": "gitComparePlus.commit.compareWithSelected",
+          "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/ && gitComparePlus.commitSelected",
           "group": "7_select@2"
         },
         {
-          "command": "branchCompare.commit.compareTwo",
+          "command": "gitComparePlus.commit.compareTwo",
           "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/ && listMultiSelection",
           "group": "7_select@3"
         },
         {
-          "command": "branchCompare.commit.copyId",
+          "command": "gitComparePlus.commit.copyId",
           "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/",
           "group": "9_copy@1"
         },
         {
-          "command": "branchCompare.stash.openAll",
-          "when": "view == branchCompare.repositories && viewItem =~ /^stash$/",
+          "command": "gitComparePlus.stash.openAll",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^stash$/",
           "group": "inline@1"
         },
         {
-          "command": "branchCompare.stash.apply",
-          "when": "view == branchCompare.repositories && viewItem =~ /^stash$/",
+          "command": "gitComparePlus.stash.apply",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^stash$/",
           "group": "inline@2"
         },
         {
-          "command": "branchCompare.stash.openAll",
-          "when": "view == branchCompare.repositories && viewItem =~ /^stash$/",
+          "command": "gitComparePlus.stash.openAll",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^stash$/",
           "group": "1_open@1"
         },
         {
-          "command": "branchCompare.stash.apply",
-          "when": "view == branchCompare.repositories && viewItem =~ /^stash$/",
+          "command": "gitComparePlus.stash.apply",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^stash$/",
           "group": "2_apply@1"
         },
         {
-          "command": "branchCompare.stash.pop",
-          "when": "view == branchCompare.repositories && viewItem =~ /^stash$/",
+          "command": "gitComparePlus.stash.pop",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^stash$/",
           "group": "2_apply@2"
         },
         {
-          "command": "branchCompare.stash.drop",
-          "when": "view == branchCompare.repositories && viewItem =~ /^stash$/",
+          "command": "gitComparePlus.stash.drop",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^stash$/",
           "group": "5_danger@1"
         }
       ],
       "scm/title": [
         {
-          "command": "branchCompare.compareAll",
+          "command": "gitComparePlus.compareAll",
           "group": "navigation"
         }
       ],
       "commandPalette": [
         {
-          "command": "branchCompare.openBranch",
+          "command": "gitComparePlus.openBranch",
           "when": "false"
         },
         {
-          "command": "branchCompare.changeSubject",
-          "when": "branchCompare.hasComparison"
+          "command": "gitComparePlus.changeSubject",
+          "when": "gitComparePlus.hasComparison"
         },
         {
-          "command": "branchCompare.changeDefaultBase",
+          "command": "gitComparePlus.changeDefaultBase",
           "when": "false"
         },
         {
-          "command": "branchCompare.compare",
+          "command": "gitComparePlus.compare",
           "when": "false"
         },
         {
-          "command": "branchCompare.compareWith",
+          "command": "gitComparePlus.compareWith",
           "when": "false"
         },
         {
-          "command": "branchCompare.setBase",
+          "command": "gitComparePlus.setBase",
           "when": "false"
         },
         {
-          "command": "branchCompare.clearBase",
+          "command": "gitComparePlus.clearBase",
           "when": "false"
         },
         {
-          "command": "branchCompare.openWorktree",
+          "command": "gitComparePlus.openWorktree",
           "when": "false"
         },
         {
-          "command": "branchCompare.openChange",
+          "command": "gitComparePlus.openChange",
           "when": "false"
         },
         {
-          "command": "branchCompare.swapSides",
-          "when": "branchCompare.hasComparison"
+          "command": "gitComparePlus.swapSides",
+          "when": "gitComparePlus.hasComparison"
         },
         {
-          "command": "branchCompare.openFile",
+          "command": "gitComparePlus.openFile",
           "when": "false"
         },
         {
-          "command": "branchCompare.openFileAtBase",
+          "command": "gitComparePlus.openFileAtBase",
           "when": "false"
         },
         {
-          "command": "branchCompare.openCommit",
+          "command": "gitComparePlus.openCommit",
           "when": "false"
         },
         {
-          "command": "branchCompare.compareWithCommit",
+          "command": "gitComparePlus.compareWithCommit",
           "when": "false"
         },
         {
-          "command": "branchCompare.openAllChanges",
-          "when": "branchCompare.hasComparison"
+          "command": "gitComparePlus.openAllChanges",
+          "when": "gitComparePlus.hasComparison"
         },
         {
-          "command": "branchCompare.rerun",
-          "when": "branchCompare.hasComparison"
+          "command": "gitComparePlus.rerun",
+          "when": "gitComparePlus.hasComparison"
         },
         {
-          "command": "branchCompare.clear",
-          "when": "branchCompare.hasComparison"
+          "command": "gitComparePlus.clear",
+          "when": "gitComparePlus.hasComparison"
         },
         {
-          "command": "branchCompare.changeBase",
-          "when": "branchCompare.hasComparison"
+          "command": "gitComparePlus.changeBase",
+          "when": "gitComparePlus.hasComparison"
         },
         {
-          "command": "branchCompare.toggleUncommitted",
-          "when": "branchCompare.hasComparison"
+          "command": "gitComparePlus.toggleUncommitted",
+          "when": "gitComparePlus.hasComparison"
         },
         {
-          "command": "branchCompare.toggleMode",
-          "when": "branchCompare.hasComparison"
+          "command": "gitComparePlus.toggleMode",
+          "when": "gitComparePlus.hasComparison"
         },
         {
-          "command": "branchCompare.fetch",
+          "command": "gitComparePlus.fetch",
           "when": "false"
         },
         {
-          "command": "branchCompare.createWorktree",
+          "command": "gitComparePlus.createWorktree",
           "when": "false"
         },
         {
-          "command": "branchCompare.removeWorktree",
+          "command": "gitComparePlus.removeWorktree",
           "when": "false"
         },
         {
-          "command": "branchCompare.createBranch",
+          "command": "gitComparePlus.createBranch",
           "when": "false"
         },
         {
-          "command": "branchCompare.deleteBranch",
+          "command": "gitComparePlus.deleteBranch",
           "when": "false"
         },
         {
-          "command": "branchCompare.switchBranch",
+          "command": "gitComparePlus.switchBranch",
           "when": "false"
         },
         {
-          "command": "branchCompare.fetchAndRerun",
-          "when": "branchCompare.hasComparison"
+          "command": "gitComparePlus.fetchAndRerun",
+          "when": "gitComparePlus.hasComparison"
         },
         {
-          "command": "branchCompare.deleteSelected",
+          "command": "gitComparePlus.deleteSelected",
           "when": "false"
         },
         {
-          "command": "branchCompare.history.openDiff",
+          "command": "gitComparePlus.history.openDiff",
           "when": "false"
         },
         {
-          "command": "branchCompare.history.compareWithWorkingTree",
+          "command": "gitComparePlus.history.compareWithWorkingTree",
           "when": "false"
         },
         {
-          "command": "branchCompare.history.compareWithBranch",
+          "command": "gitComparePlus.history.compareWithBranch",
           "when": "false"
         },
         {
-          "command": "branchCompare.history.selectForCompare",
+          "command": "gitComparePlus.history.selectForCompare",
           "when": "false"
         },
         {
-          "command": "branchCompare.history.compareWithSelected",
+          "command": "gitComparePlus.history.compareWithSelected",
           "when": "false"
         },
         {
-          "command": "branchCompare.history.compareTwo",
+          "command": "gitComparePlus.history.compareTwo",
           "when": "false"
         },
         {
-          "command": "branchCompare.previousRevision",
-          "when": "branchCompare.activeFileInGit"
+          "command": "gitComparePlus.previousRevision",
+          "when": "gitComparePlus.activeFileInGit"
         },
         {
-          "command": "branchCompare.nextRevision",
-          "when": "branchCompare.activeFileInGit"
+          "command": "gitComparePlus.nextRevision",
+          "when": "gitComparePlus.activeFileInGit"
         },
         {
-          "command": "branchCompare.commits.openFile",
+          "command": "gitComparePlus.commits.openFile",
           "when": "false"
         },
         {
-          "command": "branchCompare.commits.clear",
+          "command": "gitComparePlus.commits.clear",
           "when": "false"
         },
         {
-          "command": "branchCompare.commit.showDetails",
+          "command": "gitComparePlus.commit.showDetails",
           "when": "false"
         },
         {
-          "command": "branchCompare.commit.openAll",
+          "command": "gitComparePlus.commit.openAll",
           "when": "false"
         },
         {
-          "command": "branchCompare.commit.reviewCommit",
+          "command": "gitComparePlus.commit.reviewCommit",
           "when": "false"
         },
         {
-          "command": "branchCompare.commit.reviewSince",
+          "command": "gitComparePlus.commit.reviewSince",
           "when": "false"
         },
         {
-          "command": "branchCompare.commit.reviewAgainst",
+          "command": "gitComparePlus.commit.reviewAgainst",
           "when": "false"
         },
         {
-          "command": "branchCompare.commit.select",
+          "command": "gitComparePlus.commit.select",
           "when": "false"
         },
         {
-          "command": "branchCompare.commit.compareWithSelected",
+          "command": "gitComparePlus.commit.compareWithSelected",
           "when": "false"
         },
         {
-          "command": "branchCompare.commit.compareTwo",
+          "command": "gitComparePlus.commit.compareTwo",
           "when": "false"
         },
         {
-          "command": "branchCompare.commit.copyId",
+          "command": "gitComparePlus.commit.copyId",
           "when": "false"
         },
         {
-          "command": "branchCompare.stash.openAll",
+          "command": "gitComparePlus.stash.openAll",
           "when": "false"
         },
         {
-          "command": "branchCompare.stash.apply",
+          "command": "gitComparePlus.stash.apply",
           "when": "false"
         },
         {
-          "command": "branchCompare.stash.pop",
+          "command": "gitComparePlus.stash.pop",
           "when": "false"
         },
         {
-          "command": "branchCompare.stash.drop",
+          "command": "gitComparePlus.stash.drop",
           "when": "false"
         },
         {
-          "command": "branchCompare.stash.openFile",
+          "command": "gitComparePlus.stash.openFile",
           "when": "false"
         }
       ],
       "editor/context": [
         {
-          "command": "branchCompare.history.showFile",
-          "when": "resourceScheme == file && branchCompare.activeFileInGit",
-          "group": "branchCompare@1"
+          "command": "gitComparePlus.history.showFile",
+          "when": "resourceScheme == file && gitComparePlus.activeFileInGit",
+          "group": "gitComparePlus@1"
         },
         {
-          "command": "branchCompare.history.showLines",
-          "when": "resourceScheme == file && branchCompare.activeFileInGit",
-          "group": "branchCompare@2"
+          "command": "gitComparePlus.history.showLines",
+          "when": "resourceScheme == file && gitComparePlus.activeFileInGit",
+          "group": "gitComparePlus@2"
         }
       ],
       "explorer/context": [
         {
-          "command": "branchCompare.history.showFile",
+          "command": "gitComparePlus.history.showFile",
           "when": "!explorerResourceIsFolder",
-          "group": "branchCompare@1"
+          "group": "gitComparePlus@1"
         }
       ],
       "editor/title": [
         {
-          "command": "branchCompare.previousRevision",
-          "when": "branchCompare.activeFileInGit",
+          "command": "gitComparePlus.previousRevision",
+          "when": "gitComparePlus.activeFileInGit",
           "group": "navigation@-90"
         },
         {
-          "command": "branchCompare.nextRevision",
-          "when": "branchCompare.activeFileInGit",
+          "command": "gitComparePlus.nextRevision",
+          "when": "gitComparePlus.activeFileInGit",
           "group": "navigation@-89"
         }
       ]
     },
     "configuration": {
-      "title": "Git Branch & Worktree Compare",
+      "title": "Git Compare+",
       "properties": {
-        "branchCompare.includeUntracked": {
+        "gitComparePlus.includeUntracked": {
           "type": "boolean",
           "default": true,
           "description": "Treat untracked (never-added) files as uncommitted edits: shown as new files when uncommitted edits are included, and counted when they are not."
         },
-        "branchCompare.includeUncommitted": {
+        "gitComparePlus.includeUncommitted": {
           "type": "boolean",
           "default": true,
           "description": "When comparing a worktree, include its uncommitted (staged, unstaged and, per `includeUntracked`, untracked) edits. Can be toggled per comparison from the Changes header."
         },
-        "branchCompare.compareMode": {
+        "gitComparePlus.compareMode": {
           "type": "string",
           "enum": [
             "sinceBranchPoint",
@@ -1018,36 +1046,36 @@
           "default": "sinceBranchPoint",
           "description": "Default comparison mode. Can be switched per comparison from the Changes header."
         },
-        "branchCompare.staleFetchHours": {
+        "gitComparePlus.staleFetchHours": {
           "type": "number",
           "default": 24,
           "minimum": 1,
           "description": "Flag a repo (and a comparison with one of its remote branches) as possibly out of date when it has not been fetched for this many hours."
         },
-        "branchCompare.remote": {
+        "gitComparePlus.remote": {
           "type": "string",
           "default": "origin",
           "description": "Remote whose HEAD branch is each repo's default branch. Use `upstream` if `origin` is your fork."
         },
-        "branchCompare.defaultBranches": {
+        "gitComparePlus.defaultBranches": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
           },
           "default": {},
-          "markdownDescription": "Default branch for specific repos, overriding `#branchCompare.remote#`. Keys are a repo's folder name or the absolute path of its main worktree; values are branch names, e.g. `{ \"api\": \"upstream/develop\" }`."
+          "markdownDescription": "Default branch for specific repos, overriding `#gitComparePlus.remote#`. Keys are a repo's folder name or the absolute path of its main worktree; values are branch names, e.g. `{ \"api\": \"upstream/develop\" }`."
         },
-        "branchCompare.blame.currentLine": {
+        "gitComparePlus.blame.currentLine": {
           "type": "boolean",
           "default": true,
           "description": "Show who last changed the line under the cursor, and when, at the end of that line. Hover it for the full message and actions."
         },
-        "branchCompare.blame.statusBar": {
+        "gitComparePlus.blame.statusBar": {
           "type": "boolean",
           "default": true,
           "description": "Show the author and age of the line under the cursor in the status bar. Click it to open the commit."
         },
-        "branchCompare.changesLayout": {
+        "gitComparePlus.changesLayout": {
           "type": "string",
           "enum": [
             "list",
@@ -1060,7 +1088,7 @@
           "default": "list",
           "description": "How the Changes view lays out changed files. Toggle from the view's title bar."
         },
-        "branchCompare.autoRefresh": {
+        "gitComparePlus.autoRefresh": {
           "type": "boolean",
           "default": true,
           "description": "Re-run the comparison in Changes automatically (about 1.5 s after edits, saves, commits or branch changes in the compared worktrees and repos). The Repositories view always follows git changes. Fetching is never automatic."
@@ -1069,10 +1097,10 @@
     },
     "keybindings": [
       {
-        "command": "branchCompare.deleteSelected",
+        "command": "gitComparePlus.deleteSelected",
         "key": "delete",
         "mac": "cmd+backspace",
-        "when": "focusedView == branchCompare.repositories && !inputFocus"
+        "when": "focusedView == gitComparePlus.repositories && !inputFocus"
       }
     ]
   },
@@ -1081,10 +1109,11 @@
     "build": "npm run typecheck && node scripts/build.mjs",
     "build:production": "npm run typecheck && node scripts/build.mjs --production",
     "generate:icons": "node scripts/generate-diff-bar-icons.mjs",
+    "generate:icon": "node scripts/generate-icon.mjs",
     "test": "vitest run",
     "test:host": "node test/host/runHost.mjs",
     "budget": "node scripts/check-budget.mjs",
-    "package": "npm run build:production && vsce package --no-dependencies --allow-missing-repository --skip-license --out branch-compare.vsix"
+    "package": "npm run build:production && vsce package --no-dependencies --out git-compare-plus.vsix"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -88,7 +88,7 @@ class HistoryProvider implements vscode.TreeDataProvider<HistoryNode> {
     item.tooltip = `${commitTooltip(entry.commit).replace(/\n\n.*$/s, '')}\n\nClick to see what this commit changed in the file.`;
     item.iconPath = new vscode.ThemeIcon(entry.commit.parents.length > 1 ? 'git-merge' : 'git-commit');
     item.contextValue = 'historyCommit';
-    item.command = { command: 'branchCompare.history.openDiff', title: 'Compare with Previous', arguments: [node] };
+    item.command = { command: 'gitComparePlus.history.openDiff', title: 'Compare with Previous', arguments: [node] };
     return item;
   }
 }
@@ -107,7 +107,7 @@ export class HistoryController implements vscode.Disposable {
   private stale = false;
 
   constructor(private readonly deps: HistoryDeps) {
-    this.view = vscode.window.createTreeView('branchCompare.history', { treeDataProvider: this.provider, canSelectMany: true });
+    this.view = vscode.window.createTreeView('gitComparePlus.history', { treeDataProvider: this.provider, canSelectMany: true });
     this.subscriptions = [
       this.view,
       this.view.onDidChangeVisibility((event) => {
@@ -251,7 +251,7 @@ export class HistoryController implements vscode.Disposable {
     } catch (error) {
       this.deps.logger.debug('could not tell whether the active file is in git', { function: 'updateEditorContext', reason: error instanceof Error ? error.message : String(error) });
     }
-    await vscode.commands.executeCommand('setContext', 'branchCompare.activeFileInGit', inGit);
+    await vscode.commands.executeCommand('setContext', 'gitComparePlus.activeFileInGit', inGit);
   }
 
   // --- comparisons -------------------------------------------------------------------------
@@ -328,7 +328,7 @@ export class HistoryController implements vscode.Disposable {
       return;
     }
     this.selected = { root: state.root, entry: node.entry, pathToday: state.path };
-    await vscode.commands.executeCommand('setContext', 'branchCompare.historySelected', true);
+    await vscode.commands.executeCommand('setContext', 'gitComparePlus.historySelected', true);
     vscode.window.setStatusBarMessage(`Selected ${short(node.entry)} for compare: right-click another commit → Compare with Selected`, 5000);
   }
 
@@ -366,7 +366,7 @@ export class HistoryController implements vscode.Disposable {
       void vscode.window.showInformationMessage('Open a file in a git repository to see its history.');
       return;
     }
-    await vscode.commands.executeCommand('branchCompare.history.focus');
+    await vscode.commands.executeCommand('gitComparePlus.history.focus');
     await this.load('file', file.root, file.path);
   }
 
@@ -380,7 +380,7 @@ export class HistoryController implements vscode.Disposable {
     const { start, end } = editor.selection;
     // A selection ending at column 0 of a line does not include that line.
     const lastLine = end.character === 0 && end.line > start.line ? end.line - 1 : end.line;
-    await vscode.commands.executeCommand('branchCompare.history.focus');
+    await vscode.commands.executeCommand('gitComparePlus.history.focus');
     await this.load('lines', file.root, file.path, { start: start.line + 1, end: lastLine + 1 });
   }
 
@@ -435,20 +435,20 @@ export class HistoryController implements vscode.Disposable {
           await run(...args);
         } catch (error) {
           this.deps.logger.error('history action failed', error, { function: 'registerCommands', command: id });
-          void vscode.window.showErrorMessage(`Git Branch & Worktree Compare: ${error instanceof Error ? error.message : String(error)}`);
+          void vscode.window.showErrorMessage(`Git Compare+: ${error instanceof Error ? error.message : String(error)}`);
         }
       });
     return [
-      guarded('branchCompare.history.showFile', (uri?: vscode.Uri) => this.showFileHistory(uri)),
-      guarded('branchCompare.history.showLines', () => this.showLineHistory()),
-      guarded('branchCompare.history.openDiff', (node?: HistoryNode) => this.openDiff(node)),
-      guarded('branchCompare.history.compareWithWorkingTree', (node?: HistoryNode) => this.compareWithWorkingTree(node)),
-      guarded('branchCompare.history.compareWithBranch', (node?: HistoryNode) => this.compareWithBranch(node)),
-      guarded('branchCompare.history.selectForCompare', (node?: HistoryNode) => this.selectForCompare(node)),
-      guarded('branchCompare.history.compareWithSelected', (node?: HistoryNode) => this.compareWithSelected(node)),
-      guarded('branchCompare.history.compareTwo', (node?: HistoryNode, selection?: HistoryNode[]) => this.compareTwo(node, selection)),
-      guarded('branchCompare.previousRevision', () => this.stepRevision('previous')),
-      guarded('branchCompare.nextRevision', () => this.stepRevision('next')),
+      guarded('gitComparePlus.history.showFile', (uri?: vscode.Uri) => this.showFileHistory(uri)),
+      guarded('gitComparePlus.history.showLines', () => this.showLineHistory()),
+      guarded('gitComparePlus.history.openDiff', (node?: HistoryNode) => this.openDiff(node)),
+      guarded('gitComparePlus.history.compareWithWorkingTree', (node?: HistoryNode) => this.compareWithWorkingTree(node)),
+      guarded('gitComparePlus.history.compareWithBranch', (node?: HistoryNode) => this.compareWithBranch(node)),
+      guarded('gitComparePlus.history.selectForCompare', (node?: HistoryNode) => this.selectForCompare(node)),
+      guarded('gitComparePlus.history.compareWithSelected', (node?: HistoryNode) => this.compareWithSelected(node)),
+      guarded('gitComparePlus.history.compareTwo', (node?: HistoryNode, selection?: HistoryNode[]) => this.compareTwo(node, selection)),
+      guarded('gitComparePlus.previousRevision', () => this.stepRevision('previous')),
+      guarded('gitComparePlus.nextRevision', () => this.stepRevision('next')),
     ];
   }
 

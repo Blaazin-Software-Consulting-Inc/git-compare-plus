@@ -20,7 +20,7 @@ import type { RepositoriesProvider } from './repositoriesView';
 
 /** Status bar item + Go to… picker. */
 export class WorktreeStatus implements vscode.Disposable {
-  private readonly item = vscode.window.createStatusBarItem('branchCompare.worktree', vscode.StatusBarAlignment.Left, 99);
+  private readonly item = vscode.window.createStatusBarItem('gitComparePlus.worktree', vscode.StatusBarAlignment.Left, 99);
   private readonly subscriptions: vscode.Disposable[];
   private current: WindowWorktree | undefined;
   // Each repo's worktrees, reloaded only when git state or folders change. Switching editors
@@ -34,7 +34,7 @@ export class WorktreeStatus implements vscode.Disposable {
     private readonly logger: Logger,
   ) {
     this.item.name = 'Worktree';
-    this.item.command = 'branchCompare.goTo';
+    this.item.command = 'gitComparePlus.goTo';
     this.subscriptions = [
       this.item,
       vscode.window.onDidChangeActiveTextEditor(() => this.redraw()),

@@ -33,9 +33,9 @@ describe('BaseStore', () => {
   });
 
   it('ignores malformed persisted data instead of throwing', () => {
-    const store = new BaseStore(memoryStore({ 'branchCompare.basesByRepo': { '/a/.git': { kind: 'worktree', root: 1 } } }));
+    const store = new BaseStore(memoryStore({ 'gitComparePlus.basesByRepo': { '/a/.git': { kind: 'worktree', root: 1 } } }));
     expect(store.get('/a/.git')).toBeUndefined();
-    expect(new BaseStore(memoryStore({ 'branchCompare.basesByRepo': 'garbage' })).get('/a/.git')).toBeUndefined();
+    expect(new BaseStore(memoryStore({ 'gitComparePlus.basesByRepo': 'garbage' })).get('/a/.git')).toBeUndefined();
   });
 });
 

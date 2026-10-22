@@ -14,9 +14,9 @@ const ANNOTATION_SUMMARY_CHARS = 60;
 
 /** Commands the hover links to; each takes one `BlameTarget` argument. */
 export const BLAME_COMMANDS = {
-  openCommit: 'branchCompare.blame.openCommit',
-  compareWithPrevious: 'branchCompare.blame.compareWithPrevious',
-  compareWithWorkingTree: 'branchCompare.blame.compareWithWorkingTree',
+  openCommit: 'gitComparePlus.blame.openCommit',
+  compareWithPrevious: 'gitComparePlus.blame.compareWithPrevious',
+  compareWithWorkingTree: 'gitComparePlus.blame.compareWithWorkingTree',
 } as const;
 
 /** What a hover action acts on: one line's commit in one file of one worktree. */

@@ -1,5 +1,5 @@
 /**
- * Git Branch & Worktree Compare — extension entry point.
+ * Git Compare+ — extension entry point.
  *
  * Adds an activity-bar container with two views:
  *   - Repositories: every repo in the window (one or many) with its worktrees and branches.
@@ -12,7 +12,7 @@
  * Also contributes "Compare All Repos With Default Branch" (every repo's main worktree at once).
  *
  * Wiring only: comparison logic is in comparison.ts, git access in git/gitCli.ts, views in views/.
- * Logs: View → Output → "Git Branch & Worktree Compare" (raise detail with "Developer: Set Log Level…").
+ * Logs: View → Output → "Git Compare+" (raise detail with "Developer: Set Log Level…").
  */
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -70,15 +70,15 @@ export interface ExtensionApi {
  */
 export function activate(context: vscode.ExtensionContext): ExtensionApi {
   const startedAt = Date.now();
-  const channel = vscode.window.createOutputChannel('Git Branch & Worktree Compare', { log: true });
-  const logger = createChannelLogger(channel, 'BranchCompare');
+  const channel = vscode.window.createOutputChannel('Git Compare+', { log: true });
+  const logger = createChannelLogger(channel, 'GitComparePlus');
 
   // Memoized: the git extension activates asynchronously, and every view/command shares one GitCli.
   let services: Promise<{ api: GitApi; git: GitCli; discover: () => Promise<RepoInfo[]> }> | undefined;
   const getServices = () => {
     services ??= getGitApi().then((api) => {
       const git = new GitCli(api.git.path, logger, () => {
-        const config = vscode.workspace.getConfiguration('branchCompare');
+        const config = vscode.workspace.getConfiguration('gitComparePlus');
         return parseDefaultBranchSettings(config.get('remote'), config.get('defaultBranches'));
       });
       return { api, git, discover: () => discoverRepos(api, git, logger) };
@@ -104,7 +104,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     logger,
   });
   // canSelectMany: Delete Branch / Remove Worktree act on the whole selection (one confirmation).
-  const repositoriesView = vscode.window.createTreeView('branchCompare.repositories', {
+  const repositoriesView = vscode.window.createTreeView('gitComparePlus.repositories', {
     treeDataProvider: repositories,
     showCollapseAll: true,
     canSelectMany: true,
@@ -117,9 +117,9 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     () => settings().changesLayout,
   );
   // Drives which of View as Tree / View as List the Changes title bar shows.
-  void vscode.commands.executeCommand('setContext', 'branchCompare.changesLayout', settings().changesLayout);
+  void vscode.commands.executeCommand('setContext', 'gitComparePlus.changesLayout', settings().changesLayout);
   // manageCheckboxStateManually: only file rows have checkboxes; repo rows must not cascade.
-  const changesView = vscode.window.createTreeView('branchCompare.changes', {
+  const changesView = vscode.window.createTreeView('gitComparePlus.changes', {
     treeDataProvider: changes,
     showCollapseAll: true,
     manageCheckboxStateManually: true,
@@ -189,65 +189,65 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
       repositories.refresh();
       void goTo.update();
     }),
-    register('branchCompare.refresh', () => repositories.refresh()),
-    register('branchCompare.compareAll', () => commands.compareAll(), logger),
-    register('branchCompare.compare', (node?: RepoTreeNode) => commands.compareNode(node, 'stored'), logger),
-    register('branchCompare.compareWith', (node?: RepoTreeNode) => commands.compareNode(node, 'pick'), logger),
-    register('branchCompare.setBase', (node: RepoTreeNode) => commands.setBase(node), logger),
-    register('branchCompare.clearBase', (node: RepoTreeNode) => commands.clearBase(node), logger),
-    register('branchCompare.openWorktree', (node: RepoTreeNode) => commands.openWorktree(node), logger),
-    register('branchCompare.openChange', (node: ChangesNode) => commands.openChange(node), logger),
-    register('branchCompare.openAllChanges', () => commands.openAllChanges(), logger),
-    register('branchCompare.viewAsTree', () => setChangesLayout('tree'), logger),
-    register('branchCompare.viewAsList', () => setChangesLayout('list'), logger),
-    register('branchCompare.swapSides', () => commands.swapSides(), logger),
-    register('branchCompare.compareTwo', () => commands.compareTwo(), logger),
-    register('branchCompare.changeSubject', () => commands.changeSubject(), logger),
-    register('branchCompare.changeDefaultBase', (node?: RepoTreeNode) => commands.changeDefaultBase(node), logger),
-    register('branchCompare.openFile', (node: ChangesNode) => commands.openFileSide(node, 'right'), logger),
-    register('branchCompare.openFileAtBase', (node: ChangesNode) => commands.openFileSide(node, 'left'), logger),
+    register('gitComparePlus.refresh', () => repositories.refresh()),
+    register('gitComparePlus.compareAll', () => commands.compareAll(), logger),
+    register('gitComparePlus.compare', (node?: RepoTreeNode) => commands.compareNode(node, 'stored'), logger),
+    register('gitComparePlus.compareWith', (node?: RepoTreeNode) => commands.compareNode(node, 'pick'), logger),
+    register('gitComparePlus.setBase', (node: RepoTreeNode) => commands.setBase(node), logger),
+    register('gitComparePlus.clearBase', (node: RepoTreeNode) => commands.clearBase(node), logger),
+    register('gitComparePlus.openWorktree', (node: RepoTreeNode) => commands.openWorktree(node), logger),
+    register('gitComparePlus.openChange', (node: ChangesNode) => commands.openChange(node), logger),
+    register('gitComparePlus.openAllChanges', () => commands.openAllChanges(), logger),
+    register('gitComparePlus.viewAsTree', () => setChangesLayout('tree'), logger),
+    register('gitComparePlus.viewAsList', () => setChangesLayout('list'), logger),
+    register('gitComparePlus.swapSides', () => commands.swapSides(), logger),
+    register('gitComparePlus.compareTwo', () => commands.compareTwo(), logger),
+    register('gitComparePlus.changeSubject', () => commands.changeSubject(), logger),
+    register('gitComparePlus.changeDefaultBase', (node?: RepoTreeNode) => commands.changeDefaultBase(node), logger),
+    register('gitComparePlus.openFile', (node: ChangesNode) => commands.openFileSide(node, 'right'), logger),
+    register('gitComparePlus.openFileAtBase', (node: ChangesNode) => commands.openFileSide(node, 'left'), logger),
     vscode.workspace.onDidChangeConfiguration((event) => {
       // The default branch drives ordering, ahead/behind and the one-click compare: reload.
-      if (event.affectsConfiguration('branchCompare.remote') || event.affectsConfiguration('branchCompare.defaultBranches')) {
+      if (event.affectsConfiguration('gitComparePlus.remote') || event.affectsConfiguration('gitComparePlus.defaultBranches')) {
         repositories.refresh();
       }
-      if (event.affectsConfiguration('branchCompare.blame')) {
+      if (event.affectsConfiguration('gitComparePlus.blame')) {
         blame.settingsChanged();
       }
-      if (event.affectsConfiguration('branchCompare.changesLayout')) {
-        void vscode.commands.executeCommand('setContext', 'branchCompare.changesLayout', settings().changesLayout);
+      if (event.affectsConfiguration('gitComparePlus.changesLayout')) {
+        void vscode.commands.executeCommand('setContext', 'gitComparePlus.changesLayout', settings().changesLayout);
         changes.redraw();
       }
     }),
-    register('branchCompare.openCommit', (node: ChangesNode) => commands.openCommit(node), logger),
-    register('branchCompare.compareWithCommit', (node: ChangesNode) => commands.compareWithCommit(node), logger),
-    register('branchCompare.rerun', () => commands.rerun(), logger),
-    register('branchCompare.changeBase', () => commands.changeBase(), logger),
-    register('branchCompare.toggleUncommitted', () => commands.toggleUncommitted(), logger),
-    register('branchCompare.toggleMode', () => commands.toggleMode(), logger),
-    register('branchCompare.clear', () => changes.clear()),
-    register('branchCompare.fetch', (node?: RepoTreeNode) => actions.fetchRepo(node), logger),
-    register('branchCompare.fetchAll', () => actions.fetchAll(), logger),
-    register('branchCompare.fetchAndRerun', () => commands.fetchAndRerun(actions), logger),
-    register('branchCompare.createWorktree', (node?: RepoTreeNode) => actions.createWorktree(node), logger),
-    register('branchCompare.removeWorktree', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => actions.removeWorktrees(selectionTargets(node, selection)), logger),
-    register('branchCompare.createBranch', (node?: RepoTreeNode) => actions.createBranch(node), logger),
-    register('branchCompare.deleteBranch', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => actions.deleteBranches(selectionTargets(node, selection)), logger),
+    register('gitComparePlus.openCommit', (node: ChangesNode) => commands.openCommit(node), logger),
+    register('gitComparePlus.compareWithCommit', (node: ChangesNode) => commands.compareWithCommit(node), logger),
+    register('gitComparePlus.rerun', () => commands.rerun(), logger),
+    register('gitComparePlus.changeBase', () => commands.changeBase(), logger),
+    register('gitComparePlus.toggleUncommitted', () => commands.toggleUncommitted(), logger),
+    register('gitComparePlus.toggleMode', () => commands.toggleMode(), logger),
+    register('gitComparePlus.clear', () => changes.clear()),
+    register('gitComparePlus.fetch', (node?: RepoTreeNode) => actions.fetchRepo(node), logger),
+    register('gitComparePlus.fetchAll', () => actions.fetchAll(), logger),
+    register('gitComparePlus.fetchAndRerun', () => commands.fetchAndRerun(actions), logger),
+    register('gitComparePlus.createWorktree', (node?: RepoTreeNode) => actions.createWorktree(node), logger),
+    register('gitComparePlus.removeWorktree', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => actions.removeWorktrees(selectionTargets(node, selection)), logger),
+    register('gitComparePlus.createBranch', (node?: RepoTreeNode) => actions.createBranch(node), logger),
+    register('gitComparePlus.deleteBranch', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => actions.deleteBranches(selectionTargets(node, selection)), logger),
     // Delete key: keybindings pass no arguments, so read the tree's own selection.
-    register('branchCompare.deleteSelected', () => actions.deleteSelection(repositoriesView.selection), logger),
+    register('gitComparePlus.deleteSelected', () => actions.deleteSelection(repositoriesView.selection), logger),
     ...startAutoRefresh(getServices, repositories, repositoriesView, changes, commands, () => {
       // A commit or checkout changes what every line blames to and every file's history.
       blame.gitChanged();
       history.gitChanged();
     }, channel, logger),
-    register('branchCompare.openBranch', (node?: RepoTreeNode) => actions.openBranch(node), logger),
-    register('branchCompare.stash.apply', (node?: RepoTreeNode) => actions.applyStash(node, 'apply'), logger),
-    register('branchCompare.stash.pop', (node?: RepoTreeNode) => actions.applyStash(node, 'pop'), logger),
-    register('branchCompare.stash.drop', (node?: RepoTreeNode) => actions.dropStash(node), logger),
-    register('branchCompare.stash.openFile', (node?: RepoTreeNode) => actions.openStashFile(node), logger),
-    register('branchCompare.stash.openAll', (node?: RepoTreeNode) => actions.openStashChanges(node), logger),
-    register('branchCompare.goTo', () => goTo.pick(), logger),
-    register('branchCompare.switchBranch', (node?: RepoTreeNode) => actions.switchBranch(node), logger),
+    register('gitComparePlus.openBranch', (node?: RepoTreeNode) => actions.openBranch(node), logger),
+    register('gitComparePlus.stash.apply', (node?: RepoTreeNode) => actions.applyStash(node, 'apply'), logger),
+    register('gitComparePlus.stash.pop', (node?: RepoTreeNode) => actions.applyStash(node, 'pop'), logger),
+    register('gitComparePlus.stash.drop', (node?: RepoTreeNode) => actions.dropStash(node), logger),
+    register('gitComparePlus.stash.openFile', (node?: RepoTreeNode) => actions.openStashFile(node), logger),
+    register('gitComparePlus.stash.openAll', (node?: RepoTreeNode) => actions.openStashChanges(node), logger),
+    register('gitComparePlus.goTo', () => goTo.pick(), logger),
+    register('gitComparePlus.switchBranch', (node?: RepoTreeNode) => actions.switchBranch(node), logger),
   );
   return { activationMs: Date.now() - startedAt };
 }
@@ -262,7 +262,7 @@ const AGE_REFRESH_MS = 60_000;
 /**
  * Automatic refresh (see src/autoRefresh/):
  *   - Repositories follows Cursor's git change events (always on; reloads redraw only on change).
- *   - Changes re-runs on file/git changes while `branchCompare.autoRefresh` is on.
+ *   - Changes re-runs on file/git changes while `gitComparePlus.autoRefresh` is on.
  *   - Ages re-render every minute. Fetching is never automatic: it hits the network with your
  *     credentials, so it stays a button.
  * @returns disposables for the extension context.
@@ -285,7 +285,7 @@ function startAutoRefresh(
       void notifyPersistentFailure('the comparison', reason, channel, [
         {
           title: 'Turn Off Auto-Refresh',
-          run: () => vscode.workspace.getConfiguration('branchCompare').update('autoRefresh', false, vscode.ConfigurationTarget.Global),
+          run: () => vscode.workspace.getConfiguration('gitComparePlus').update('autoRefresh', false, vscode.ConfigurationTarget.Global),
         },
       ]),
     logger,
@@ -333,7 +333,7 @@ function startAutoRefresh(
   return [
     changesRefresh,
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('branchCompare.autoRefresh')) {
+      if (event.affectsConfiguration('gitComparePlus.autoRefresh')) {
         changesRefresh.settingChanged();
       }
     }),
@@ -357,7 +357,7 @@ async function notifyPersistentFailure(
   extraActions: readonly { title: string; run: () => unknown }[],
 ): Promise<void> {
   const choice = await vscode.window.showWarningMessage(
-    `Git Branch & Worktree Compare: automatic refresh of ${scope} keeps failing: ${reason}. The view is showing earlier results.`,
+    `Git Compare+: automatic refresh of ${scope} keeps failing: ${reason}. The view is showing earlier results.`,
     'Show Log',
     ...extraActions.map((a) => a.title),
   );
@@ -398,7 +398,7 @@ async function markReviewed(
     });
   } catch (error) {
     logger.error('saving reviewed marks failed', error, { function: 'markReviewed', toggles });
-    void vscode.window.showErrorMessage(`Git Branch & Worktree Compare: couldn't save reviewed marks: ${error instanceof Error ? error.message : String(error)}`);
+    void vscode.window.showErrorMessage(`Git Compare+: couldn't save reviewed marks: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
     // Always redraw: on success to update the counts, otherwise to put the checkboxes back.
     changes.redraw();
@@ -423,7 +423,7 @@ function register<A extends unknown[]>(id: string, handler: (...args: A) => unkn
       await handler(...args);
     } catch (error) {
       logger?.error('command failed', error, { function: 'register', command: id });
-      void vscode.window.showErrorMessage(`Git Branch & Worktree Compare: ${error instanceof Error ? error.message : String(error)}`);
+      void vscode.window.showErrorMessage(`Git Compare+: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 }
@@ -433,12 +433,12 @@ function register<A extends unknown[]>(id: string, handler: (...args: A) => unkn
  * The configuration listener redraws the view and updates the title-bar context key.
  */
 async function setChangesLayout(layout: ChangesLayout): Promise<void> {
-  await vscode.workspace.getConfiguration('branchCompare').update('changesLayout', layout, vscode.ConfigurationTarget.Global);
+  await vscode.workspace.getConfiguration('gitComparePlus').update('changesLayout', layout, vscode.ConfigurationTarget.Global);
 }
 
-/** Which blame surfaces are on (`branchCompare.blame.*`). */
+/** Which blame surfaces are on (`gitComparePlus.blame.*`). */
 function blameSettings(): { currentLine: boolean; statusBar: boolean } {
-  const config = vscode.workspace.getConfiguration('branchCompare.blame');
+  const config = vscode.workspace.getConfiguration('gitComparePlus.blame');
   return { currentLine: config.get<boolean>('currentLine', true), statusBar: config.get<boolean>('statusBar', true) };
 }
 
@@ -451,7 +451,7 @@ function settings(): {
   autoRefresh: boolean;
   changesLayout: ChangesLayout;
 } {
-  const config = vscode.workspace.getConfiguration('branchCompare');
+  const config = vscode.workspace.getConfiguration('gitComparePlus');
   return {
     changesLayout: config.get<string>('changesLayout', 'list') === 'tree' ? 'tree' : 'list',
     autoRefresh: config.get<boolean>('autoRefresh', true),
@@ -503,7 +503,7 @@ class CompareCommands {
   async compareNode(node: RepoTreeNode | undefined, base: 'stored' | 'pick'): Promise<void> {
     // From the Command Palette there is no node; point the user at the view.
     if (node === undefined) {
-      await vscode.commands.executeCommand('branchCompare.repositories.focus');
+      await vscode.commands.executeCommand('gitComparePlus.repositories.focus');
       return;
     }
     const git = await this.getGit();
@@ -579,7 +579,7 @@ class CompareCommands {
   /** Repo row → "Change Default Against…": what this repo's one-click compare uses. */
   async changeDefaultBase(node: RepoTreeNode | undefined): Promise<void> {
     if (node === undefined || node.kind !== 'repo') {
-      await vscode.commands.executeCommand('branchCompare.repositories.focus');
+      await vscode.commands.executeCommand('gitComparePlus.repositories.focus');
       return;
     }
     const base = await this.pickAgainst(node.repo, undefined, `${node.repo.name}: compare against what by default?`);
@@ -816,13 +816,13 @@ class CompareCommands {
   private async run(setup: ComparisonSetup): Promise<void> {
     const results = await this.compute(setup);
     this.changes.show({ setup, results, baseFetch: await this.baseFetchInfo(results) });
-    await vscode.commands.executeCommand('branchCompare.changes.focus');
+    await vscode.commands.executeCommand('gitComparePlus.changes.focus');
   }
 
   private async compute(setup: ComparisonSetup): Promise<ComparisonResult[]> {
     const git = await this.getGit();
     const { includeUntracked } = settings();
-    return vscode.window.withProgress({ location: { viewId: 'branchCompare.changes' }, title: 'Comparing…' }, () =>
+    return vscode.window.withProgress({ location: { viewId: 'gitComparePlus.changes' }, title: 'Comparing…' }, () =>
       runComparisons(git, setup.requests, setup.base, setup.mode, { includeUntracked, logger: this.logger }),
     );
   }

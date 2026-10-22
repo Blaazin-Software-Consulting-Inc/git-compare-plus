@@ -62,19 +62,19 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
   private readonly subscriptions: vscode.Disposable[];
 
   constructor(private readonly deps: CommitsViewDeps) {
-    this.view = vscode.window.createTreeView('branchCompare.commits', { treeDataProvider: this, canSelectMany: true, showCollapseAll: true });
+    this.view = vscode.window.createTreeView('gitComparePlus.commits', { treeDataProvider: this, canSelectMany: true, showCollapseAll: true });
     this.subscriptions = [
       this.view,
-      vscode.commands.registerCommand('branchCompare.commits.search', () => this.guard('search', () => this.search())),
-      vscode.commands.registerCommand('branchCompare.commits.openFile', (node?: CommitsNode) => this.guard('openFile', () => this.openFile(node))),
-      vscode.commands.registerCommand('branchCompare.commits.clear', () => this.show([], undefined, undefined, false)),
+      vscode.commands.registerCommand('gitComparePlus.commits.search', () => this.guard('search', () => this.search())),
+      vscode.commands.registerCommand('gitComparePlus.commits.openFile', (node?: CommitsNode) => this.guard('openFile', () => this.openFile(node))),
+      vscode.commands.registerCommand('gitComparePlus.commits.clear', () => this.show([], undefined, undefined, false)),
     ];
   }
 
   /** Show one commit's details, expanded (Show Commit Details from any commit list). */
   async showCommit(target: CommitTarget): Promise<void> {
     this.show([target], `Commit ${target.commit.sha.slice(0, 7)}`, commitTitle(target.commit), true);
-    await vscode.commands.executeCommand('branchCompare.commits.focus');
+    await vscode.commands.executeCommand('gitComparePlus.commits.focus');
   }
 
   /** "Search Commits…": repo, then what to search by, then the text. */
@@ -100,7 +100,7 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
       return;
     }
     const query: CommitQuery = { kind: kind.searchKind, text: text.trim() };
-    await vscode.commands.executeCommand('branchCompare.commits.focus');
+    await vscode.commands.executeCommand('gitComparePlus.commits.focus');
     this.view.description = 'searching…';
     const found = await this.runSearch(repo, query);
     const shown = found.slice(0, SEARCH_LIMIT);
@@ -212,7 +212,7 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
         const item = new vscode.TreeItem(node.label);
         item.iconPath = new vscode.ThemeIcon('git-commit');
         item.tooltip = 'Click to show this commit';
-        item.command = { command: 'branchCompare.commit.showDetails', title: 'Show Commit Details', arguments: [{ kind: 'commit', target: node.target, expanded: true }] };
+        item.command = { command: 'gitComparePlus.commit.showDetails', title: 'Show Commit Details', arguments: [{ kind: 'commit', target: node.target, expanded: true }] };
         return item;
       }
       case 'file':
@@ -265,7 +265,7 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     item.description = [fileLineStatsText(file.lines), where].filter((part) => part.length > 0).join('  ');
     item.tooltip = file.path;
     item.contextValue = 'commitsFile';
-    item.command = { command: 'branchCompare.commits.openFile', title: 'Open Change', arguments: [node] };
+    item.command = { command: 'gitComparePlus.commits.openFile', title: 'Open Change', arguments: [node] };
     return item;
   }
 
@@ -300,7 +300,7 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     } catch (error) {
       this.deps.logger.error('commits view action failed', error, { function: name });
       this.view.description = undefined;
-      void vscode.window.showErrorMessage(`Git Branch & Worktree Compare: ${error instanceof Error ? error.message : String(error)}`);
+      void vscode.window.showErrorMessage(`Git Compare+: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

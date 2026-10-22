@@ -13,7 +13,7 @@
  */
 import type { BaseSpec } from './comparison';
 
-const STORAGE_KEY = 'branchCompare.basesByRepo';
+const STORAGE_KEY = 'gitComparePlus.basesByRepo';
 
 /** The subset of `vscode.Memento` used here. */
 export interface KeyValueStore {

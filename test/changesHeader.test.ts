@@ -22,7 +22,7 @@ describe('subject row', () => {
       label: 'Reviewing: feature-x',
       description: 'worktree · INCLUDING uncommitted edits',
       warning: false,
-      command: 'branchCompare.toggleUncommitted',
+      command: 'gitComparePlus.toggleUncommitted',
     });
   });
 
@@ -83,7 +83,7 @@ describe('base row', () => {
     expect(header(wt(true), { kind: 'default' }).baseRow).toMatchObject({
       label: 'Against: origin/master',
       description: 'default branch · click to change',
-      command: 'branchCompare.changeBase',
+      command: 'gitComparePlus.changeBase',
     });
   });
 
@@ -100,7 +100,7 @@ describe('base row', () => {
 
 describe('mode row', () => {
   it('describes both modes and toggles', () => {
-    expect(header(wt(true), { kind: 'default' }, {}, 'merge-base').modeRow).toMatchObject({ label: 'Showing: changes since branch point', command: 'branchCompare.toggleMode' });
+    expect(header(wt(true), { kind: 'default' }, {}, 'merge-base').modeRow).toMatchObject({ label: 'Showing: changes since branch point', command: 'gitComparePlus.toggleMode' });
     expect(header(wt(true), { kind: 'default' }, {}, 'direct').modeRow).toMatchObject({ label: 'Showing: all differences' });
   });
 

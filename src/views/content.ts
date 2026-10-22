@@ -2,7 +2,7 @@
  * content — turns `SideSource` descriptors (comparison.ts) into URIs the diff editor can open,
  * and serves the content of historical file versions.
  *
- * Scheme `branch-compare:` — read-only documents with the content of `<revision>:<path>` in a repo:
+ * Scheme `git-compare-plus:` — read-only documents with the content of `<revision>:<path>` in a repo:
  *   path  = `/<repo-relative path>`; keeps the real file name so the tab title and language
  *           detection (syntax highlighting) work.
  *   query = `cwd=<worktree or repo root>&rev=<revision>`; `rev` empty means an empty document,
@@ -17,7 +17,7 @@ import type { SideSource } from '../comparison';
 import type { GitCli } from '../git/gitCli';
 import type { Logger } from '../logger';
 
-export const CONTENT_SCHEME = 'branch-compare';
+export const CONTENT_SCHEME = 'git-compare-plus';
 
 /** Map a side descriptor to an openable URI. `empty` becomes an empty read-only document. */
 export function sideToUri(side: SideSource, fallbackPath: string): vscode.Uri {
@@ -43,7 +43,7 @@ export function revisionUri(cwd: string, revision: string, repoRelativePath: str
   });
 }
 
-/** The parts of a `branch-compare:` URI; undefined for other schemes or an empty side. */
+/** The parts of a `git-compare-plus:` URI; undefined for other schemes or an empty side. */
 export function parseRevisionUri(uri: vscode.Uri): { cwd: string; revision: string; path: string; pathToday: string } | undefined {
   if (uri.scheme !== CONTENT_SCHEME) {
     return undefined;
@@ -58,7 +58,7 @@ export function parseRevisionUri(uri: vscode.Uri): { cwd: string; revision: stri
   return { cwd, revision, path: filePath, pathToday: params.get('file') ?? filePath };
 }
 
-/** Serves `branch-compare:` documents by running `git show <rev>:<path>`. */
+/** Serves `git-compare-plus:` documents by running `git show <rev>:<path>`. */
 export class RevisionContentProvider implements vscode.TextDocumentContentProvider {
   constructor(
     private readonly getGit: () => Promise<GitCli>,

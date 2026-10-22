@@ -1,5 +1,5 @@
 /**
- * repositoriesView — the "Repositories" tree in the Branch & Worktree Compare sidebar.
+ * repositoriesView — the "Repositories" tree in the Git Compare+ sidebar.
  *
  * Shape:
  *   repo                       (the main worktree; description = checked-out branch)
@@ -90,7 +90,7 @@ export interface RepositoriesViewDeps {
   discoverRepos(): Promise<RepoInfo[]>;
   /** The comparison base the user set for a repo (baseStore.ts); undefined = default branch. */
   getBase(repo: RepoInfo): BaseSpec | undefined;
-  /** Hours after which a repo's last fetch is flagged as stale (setting `branchCompare.staleFetchHours`). */
+  /** Hours after which a repo's last fetch is flagged as stale (setting `gitComparePlus.staleFetchHours`). */
   staleFetchHours(): number;
   /** Extension root, for the diff-bar icons on stash files. */
   readonly extensionUri: vscode.Uri;
@@ -581,7 +581,7 @@ function stashFileItem(node: Extract<RepoTreeNode, { kind: 'stashFile' }>, exten
   const where = [directory === '.' ? '' : directory, file.status === 'untracked' ? '(untracked)' : ''].filter(Boolean).join(' ');
   item.description = [fileLineStatsText(file.lines), where].filter((part) => part.length > 0).join('  ');
   item.tooltip = file.path;
-  item.command = { command: 'branchCompare.stash.openFile', title: 'Open Change', arguments: [node] };
+  item.command = { command: 'gitComparePlus.stash.openFile', title: 'Open Change', arguments: [node] };
   return item;
 }
 

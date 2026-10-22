@@ -40,15 +40,15 @@ describe('ReviewStore', () => {
     const store = new ReviewStore(backing);
     await store.set('/a/.git', [{ path: 'x', fingerprint: 'f' }], true, 1);
     await store.set('/b/.git', [{ path: 'y', fingerprint: 'g' }], true, 2);
-    const before = backing.data['branchCompare.reviewedByRepo'];
+    const before = backing.data['gitComparePlus.reviewedByRepo'];
     await store.set('/b/.git', [], true, 3);
-    expect(backing.data['branchCompare.reviewedByRepo']).toBe(before);
+    expect(backing.data['gitComparePlus.reviewedByRepo']).toBe(before);
     expect(store.isReviewed('/a/.git', 'x', 'f')).toBe(true);
   });
 
   it('ignores malformed persisted data', () => {
-    expect(new ReviewStore(memoryStore({ 'branchCompare.reviewedByRepo': 'junk' })).isReviewed('/a/.git', 'x', 'f')).toBe(false);
-    const wrongValue = memoryStore({ 'branchCompare.reviewedByRepo': { '/a/.git': { 'x\0f': 'yes' } } });
+    expect(new ReviewStore(memoryStore({ 'gitComparePlus.reviewedByRepo': 'junk' })).isReviewed('/a/.git', 'x', 'f')).toBe(false);
+    const wrongValue = memoryStore({ 'gitComparePlus.reviewedByRepo': { '/a/.git': { 'x\0f': 'yes' } } });
     expect(new ReviewStore(wrongValue).isReviewed('/a/.git', 'x', 'f')).toBe(false);
   });
 

@@ -8,13 +8,13 @@
  *
  * A collapsed "Commits" group (one per repo) lists the commits the comparison covers, newest first;
  * clicking one opens that commit's own changes in a multi-file diff without leaving the
- * comparison (`branchCompare.openCommit`). Not shown when there are none, or the base is a snapshot.
+ * comparison (`gitComparePlus.openCommit`). Not shown when there are none, or the base is a snapshot.
  *
- * Layout (setting `branchCompare.changesLayout`, toggled from the title bar): `list` shows files
+ * Layout (setting `gitComparePlus.changesLayout`, toggled from the title bar): `list` shows files
  * flat with their folder as the description; `tree` groups them into compacted folders
  * (fileTree.ts), each with its own +/− totals.
  *
- * Clicking a file runs `branchCompare.openChange`, which opens the diff editor (extension.ts).
+ * Clicking a file runs `gitComparePlus.openChange`, which opens the diff editor (extension.ts).
  * Each file has a "reviewed" checkbox. Its state is read from the ReviewStore on every render
  * (via `isReviewed`), keyed by the file's diff fingerprint, so a mark disappears by itself when an
  * automatic refresh brings a changed version of the file. Toggles are handled in extension.ts.
@@ -22,7 +22,7 @@
  * icon; binary files and files with unknown counts keep the file-type icon. The hover repeats the
  * counts in colour, since the row's description text cannot be coloured.
  * Status letters and colors come from a FileDecorationProvider on the private
- * `branch-compare-item:` scheme. Using real file URIs as `resourceUri` would make the editor's own git
+ * `git-compare-plus-item:` scheme. Using real file URIs as `resourceUri` would make the editor's own git
  * decorations (relative to HEAD, not to the comparison base) appear and contradict ours.
  */
 import * as path from 'node:path';
@@ -35,7 +35,7 @@ import { diffBarIconPath, diffBarShape, lineStatsHoverHtml } from './diffBar';
 import { buildFileTree, filesUnder, type FolderNode } from './fileTree';
 import { fileLineStatsText, lineStatsTooltip, totalLineStatsText } from './lineStatsText';
 
-const ITEM_SCHEME = 'branch-compare-item';
+const ITEM_SCHEME = 'git-compare-plus-item';
 
 /** The comparison on display: what was asked for (re-run on Refresh / header clicks) and its results. */
 export interface ChangesState {
@@ -80,7 +80,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vs
   /**
    * @param isReviewed - whether this file's current diff is marked reviewed (ReviewStore).
    * @param extensionUri - extension root, to resolve the diff-bar icons under `media/`.
-   * @param layout - reads the `branchCompare.changesLayout` setting; call `redraw` when it changes.
+   * @param layout - reads the `gitComparePlus.changesLayout` setting; call `redraw` when it changes.
    */
   constructor(
     private readonly isReviewed: (result: ComparisonResult, file: ChangedFile) => boolean,
@@ -108,7 +108,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vs
   show(state: ChangesState): void {
     this.state = state;
     this.updateViewChrome();
-    void vscode.commands.executeCommand('setContext', 'branchCompare.hasComparison', true);
+    void vscode.commands.executeCommand('setContext', 'gitComparePlus.hasComparison', true);
     this.changeEmitter.fire();
     this.stateEmitter.fire(state);
   }
@@ -117,7 +117,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vs
   clear(): void {
     this.state = undefined;
     this.updateViewChrome();
-    void vscode.commands.executeCommand('setContext', 'branchCompare.hasComparison', false);
+    void vscode.commands.executeCommand('setContext', 'gitComparePlus.hasComparison', false);
     this.changeEmitter.fire();
     this.stateEmitter.fire(undefined);
   }
@@ -307,7 +307,7 @@ function commitItem(result: ComparisonResult, commit: CommitEntry): vscode.TreeI
   item.tooltip = commitTooltip(commit);
   item.iconPath = new vscode.ThemeIcon(commit.parents.length > 1 ? 'git-merge' : 'git-commit');
   item.contextValue = 'commit';
-  item.command = { command: 'branchCompare.openCommit', title: 'Open Commit', arguments: [{ kind: 'commit', result, commit }] };
+  item.command = { command: 'gitComparePlus.openCommit', title: 'Open Commit', arguments: [{ kind: 'commit', result, commit }] };
   return item;
 }
 
@@ -318,7 +318,7 @@ function outcomeMessage(result: ComparisonResult): ChangesNode {
     case 'ref_missing':
       return { kind: 'message', text: `${result.baseLabel ?? 'Default branch'} not found in ${result.repo.name}`, icon: 'warning' };
     case 'failed':
-      return { kind: 'message', text: `Failed: ${result.errorMessage ?? 'see Output → Git Branch & Worktree Compare'}`, icon: 'error' };
+      return { kind: 'message', text: `Failed: ${result.errorMessage ?? 'see Output → Git Compare+'}`, icon: 'error' };
   }
 }
 
@@ -385,7 +385,7 @@ function fileItem(result: ComparisonResult, file: ChangedFile, reviewed: boolean
   item.tooltip = fileTooltip(file);
   // `changedFile.<status>`: Open File is hidden for deletions, Open File at Base for additions.
   item.contextValue = `changedFile.${file.status}`;
-  item.command = { command: 'branchCompare.openChange', title: 'Open Change', arguments: [{ kind: 'file', result, file }] };
+  item.command = { command: 'gitComparePlus.openChange', title: 'Open Change', arguments: [{ kind: 'file', result, file }] };
   return item;
 }
 

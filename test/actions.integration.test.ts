@@ -33,7 +33,7 @@ function commit(cwd: string, file: string, content: string, message: string): vo
 }
 
 beforeAll(() => {
-  sandbox = realpathSync(mkdtempSync(path.join(tmpdir(), 'branch-compare-actions-')));
+  sandbox = realpathSync(mkdtempSync(path.join(tmpdir(), 'git-compare-plus-actions-')));
   remote = path.join(sandbox, 'remote.git');
   clone = path.join(sandbox, 'clone');
   other = path.join(sandbox, 'other');

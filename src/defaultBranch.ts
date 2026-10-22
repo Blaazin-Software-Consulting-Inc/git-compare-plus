@@ -6,8 +6,8 @@
  * Why configurable: the automatic choice is `<remote>/HEAD`, and `origin` is only right for a
  * plain clone. In a fork workflow `origin` is the user's fork and the real project is `upstream`,
  * so `origin/HEAD` points at a stale copy. Two settings cover that:
- *   - `branchCompare.remote`: the remote whose HEAD is the default (`upstream` for forks).
- *   - `branchCompare.defaultBranches`: per-repo overrides, keyed by the repo's folder name or the
+ *   - `gitComparePlus.remote`: the remote whose HEAD is the default (`upstream` for forks).
+ *   - `gitComparePlus.defaultBranches`: per-repo overrides, keyed by the repo's folder name or the
  *     absolute path of its main worktree, e.g. `{ "api": "upstream/develop" }`.
  *
  * Resolution order (GitCli.defaultBranch): override → `<remote>/HEAD` → the first existing of

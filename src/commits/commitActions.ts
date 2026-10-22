@@ -57,14 +57,14 @@ export class CommitActions implements vscode.Disposable {
       this.command('select', (target) => this.select(target)),
       this.command('compareWithSelected', (target) => this.compareWithSelected(target)),
       this.command('copyId', (target) => vscode.env.clipboard.writeText(target.commit.sha)),
-      vscode.commands.registerCommand('branchCompare.commit.compareTwo', (node: unknown, selection?: unknown[]) =>
+      vscode.commands.registerCommand('gitComparePlus.commit.compareTwo', (node: unknown, selection?: unknown[]) =>
         this.guard('compareTwo', () => this.compareTwo(selection ?? (node !== undefined ? [node] : []))),
       ),
     ];
   }
 
   private command(name: string, run: (target: CommitTarget) => Thenable<unknown> | Promise<unknown>): vscode.Disposable {
-    return vscode.commands.registerCommand(`branchCompare.commit.${name}`, (node: unknown) =>
+    return vscode.commands.registerCommand(`gitComparePlus.commit.${name}`, (node: unknown) =>
       this.guard(name, async () => {
         const target = await this.deps.resolve(node);
         if (target !== undefined) {
@@ -107,7 +107,7 @@ export class CommitActions implements vscode.Disposable {
 
   private async select(target: CommitTarget): Promise<void> {
     this.selected = target;
-    await vscode.commands.executeCommand('setContext', 'branchCompare.commitSelected', true);
+    await vscode.commands.executeCommand('setContext', 'gitComparePlus.commitSelected', true);
     vscode.window.setStatusBarMessage(`Selected ${target.commit.sha.slice(0, 7)} for compare: right-click another commit → Compare with Selected`, 5000);
   }
 
@@ -143,7 +143,7 @@ export class CommitActions implements vscode.Disposable {
       await run();
     } catch (error) {
       this.deps.logger.error('commit action failed', error, { function: name });
-      void vscode.window.showErrorMessage(`Git Branch & Worktree Compare: ${error instanceof Error ? error.message : String(error)}`);
+      void vscode.window.showErrorMessage(`Git Compare+: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

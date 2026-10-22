@@ -28,7 +28,7 @@ function git(cwd: string, ...args: string[]): string {
 
 beforeAll(() => {
   // realpath: macOS tmpdir is a symlink (/var → /private/var) and git reports resolved paths.
-  sandbox = realpathSync(mkdtempSync(path.join(tmpdir(), 'branch-compare-')));
+  sandbox = realpathSync(mkdtempSync(path.join(tmpdir(), 'git-compare-plus-')));
   repoRoot = path.join(sandbox, 'repo');
   worktreeRoot = path.join(sandbox, 'wt');
   git(sandbox, 'init', '-q', '-b', 'main', repoRoot);

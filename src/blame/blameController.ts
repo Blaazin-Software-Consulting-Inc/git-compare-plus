@@ -15,8 +15,8 @@
  *   - A git change (commit, checkout, …) in any repo clears the cache; the next render re-blames.
  *   - Files outside git, untracked files, very large files and non-file documents are skipped.
  *
- * Settings: `branchCompare.blame.currentLine` (end-of-line note + hover) and
- * `branchCompare.blame.statusBar`, both on by default. With both off, nothing runs.
+ * Settings: `gitComparePlus.blame.currentLine` (end-of-line note + hover) and
+ * `gitComparePlus.blame.statusBar`, both on by default. With both off, nothing runs.
  *
  * Failures are logged at WARN and the note is simply not shown; blame never shows a popup.
  */
@@ -59,7 +59,7 @@ export class BlameController implements vscode.Disposable {
     after: { color: new vscode.ThemeColor('editorCodeLens.foreground'), fontStyle: 'italic', margin: '0 0 0 3em' },
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
   });
-  private readonly statusItem = vscode.window.createStatusBarItem('branchCompare.blame', vscode.StatusBarAlignment.Left, 98);
+  private readonly statusItem = vscode.window.createStatusBarItem('gitComparePlus.blame', vscode.StatusBarAlignment.Left, 98);
   private readonly cache = new Map<string, Promise<CachedBlame>>();
   // Worktree root per folder, so `rev-parse --show-toplevel` runs once per folder.
   private readonly roots = new Map<string, Promise<string | undefined>>();
@@ -241,7 +241,7 @@ export class BlameController implements vscode.Disposable {
           await run(target);
         } catch (error) {
           this.logger.error('blame action failed', error, { function: 'registerCommands', command: id, target });
-          void vscode.window.showErrorMessage(`Git Branch & Worktree Compare: ${error instanceof Error ? error.message : String(error)}`);
+          void vscode.window.showErrorMessage(`Git Compare+: ${error instanceof Error ? error.message : String(error)}`);
         }
       });
     return [
@@ -289,7 +289,7 @@ export class BlameController implements vscode.Disposable {
   }
 }
 
-// Only real files on disk: our own `branch-compare:` documents (historical versions), diff
+// Only real files on disk: our own `git-compare-plus:` documents (historical versions), diff
 // editors' git views and untitled buffers have no working-tree file to blame.
 function isBlameable(document: vscode.TextDocument): boolean {
   return document.uri.scheme === 'file' && !document.isUntitled && document.lineCount <= MAX_BLAME_LINES;
