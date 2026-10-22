@@ -16,6 +16,7 @@
  * Pure; unit-tested in test/defaultBranch.test.ts.
  */
 import * as path from 'node:path';
+import { samePath } from './paths';
 
 /** The two settings, as read from the configuration. */
 export interface DefaultBranchSettings {
@@ -61,16 +62,6 @@ export function parseDefaultBranchSettings(remote: unknown, overrides: unknown):
     }
   }
   return { remote: cleanRemote, overrides: cleanOverrides };
-}
-
-// Paths from git are forward-slashed on every platform; settings may use either separator, and
-// Windows paths are case-insensitive.
-function samePath(a: string, b: string): boolean {
-  const normalize = (p: string) => {
-    const resolved = path.resolve(p).replace(/\\/g, '/').replace(/\/+$/, '');
-    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-  };
-  return normalize(a) === normalize(b);
 }
 
 function nonEmpty(value: string | undefined): string | undefined {

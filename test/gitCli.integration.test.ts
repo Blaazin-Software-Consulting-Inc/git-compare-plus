@@ -249,6 +249,23 @@ describe('GitCli against a real repository', () => {
     expect(result?.commits?.truncated).toBe(false);
   });
 
+  it('lists tags newest first and recent commits across all branches', async () => {
+    git(repoRoot, 'tag', 'v0.1', 'main~1');
+    git(repoRoot, 'tag', '-a', '-m', 'release', 'v0.2', 'main');
+    try {
+      const cli = new GitCli('git', recordingLogger());
+      const tags = await cli.tags(repoRoot);
+      expect(tags.map((t) => t.name).sort()).toEqual(['v0.1', 'v0.2']);
+      expect(tags.every((t) => typeof t.createdAt === 'number')).toBe(true);
+      // --all: commits on feature are listed too, not only those on main.
+      const subjects = (await cli.recentCommits(repoRoot, 50)).map((c) => c.subject);
+      expect(subjects).toEqual(expect.arrayContaining(['feature work', 'main moves on', 'base']));
+      expect(await cli.recentCommits(repoRoot, 1)).toHaveLength(1);
+    } finally {
+      git(repoRoot, 'tag', '-d', 'v0.1', 'v0.2');
+    }
+  });
+
   it('counts ahead/behind the same way in one walk and per revision', async () => {
     const cli = new GitCli('git', recordingLogger());
     const mainSha = (await cli.resolveCommit(repoRoot, 'main')) ?? '';

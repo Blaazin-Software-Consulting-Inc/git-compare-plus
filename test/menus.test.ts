@@ -82,3 +82,18 @@ describe('changed-file context menu (Changes view)', () => {
     }
   });
 });
+
+describe('header row buttons (Changes view)', () => {
+  it('Change What Is Reviewed is on the Reviewing row only; Swap on both side rows, not the mode row', () => {
+    expect(shown('branchCompare.changeSubject', 'header.subject')).toBe(true);
+    expect(shown('branchCompare.changeSubject', 'header.base')).toBe(false);
+    expect(shown('branchCompare.swapSides', 'header.subject')).toBe(true);
+    expect(shown('branchCompare.swapSides', 'header.base')).toBe(true);
+    expect(shown('branchCompare.swapSides', 'header.mode')).toBe(false);
+  });
+
+  it('Change Default Against is on repo rows only', () => {
+    const actual = Object.entries(values).filter(([, value]) => shown('branchCompare.changeDefaultBase', value)).map(([name]) => name);
+    expect(actual.sort()).toEqual(['repo', 'repoWithBase']);
+  });
+});

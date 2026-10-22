@@ -7,10 +7,12 @@
  *   ├─ Branches (n)            local branches
  *   └─ Remote Branches (n)     remote-tracking branches (collapsed)
  *
- * Repo, worktree and branch nodes are "comparable": they carry an inline compare button (compares
- * with the repo's comparison base, i.e. its default branch unless one was set) and a context menu
- * (Compare With…, Set as Comparison Base). The item that IS the repo's base is marked with a target
- * icon, and the repo row says what its base is. `contextValue` encodes all of this for the menus:
+ * Repo, worktree and branch nodes are "comparable": they carry an inline compare button (reviews
+ * the item against the repo's default "Against", i.e. its default branch unless one was set) and a
+ * context menu (Review Against…, Use as Default Against). The item that IS the repo's default
+ * Against is marked with a target icon, and the repo row always says what one-click compares
+ * against (`against origin/main`). Internally that saved side is still called the "base"
+ * (baseStore.ts). `contextValue` encodes all of this for the menus:
  *   comparable.repo[.hasBase]
  *   comparable.worktree[.main][.base]
  *   comparable.branch.local[.checkedOut][.base] | comparable.branch.remote[.base]
@@ -19,7 +21,7 @@
  *
  * Order (treeOrder.ts): default branch, then main/master, then newest commit first; the main
  * worktree is always first. Each worktree/branch shows the age of its latest commit, and how many
- * commits it is ahead of / behind the repo's comparison base (`↑3 ↓12`, aheadBehind.ts).
+ * commits it is ahead of / behind the repo's default Against (`↑3 ↓12`, aheadBehind.ts).
  *
  * The repo row also shows when it was last fetched; comparisons against `origin/…` are only as
  * current as that fetch.
@@ -40,6 +42,7 @@ import {
 } from '../aheadBehind';
 import { baseLabel, baseMatches } from '../baseStore';
 import { formatAge, isFetchStale } from '../operations';
+import { displayPath } from '../paths';
 import { FailureTracker, repositoriesStaleMessage } from '../autoRefresh/failureTracker';
 import { stableSignature } from '../autoRefresh/scheduling';
 import { sortBranches, sortWorktrees } from '../treeOrder';
@@ -56,8 +59,10 @@ interface RepoDetails {
   readonly lastFetchedAt?: number;
   /** Worktree HEAD SHA → committer date (ms); shown as the worktree's age. */
   readonly worktreeDates: ReadonlyMap<string, number>;
-  /** Commits ahead/behind the comparison base at load time; undefined when unavailable. */
+  /** Commits ahead/behind the default Against at load time; undefined when unavailable. */
   readonly aheadBehind?: AheadBehindCounts;
+  /** The repo's default branch at load time (defaultBranch.ts); undefined when none was found. */
+  readonly defaultBranch?: string;
 }
 
 type GroupKind = 'worktrees' | 'branches' | 'remotes';
@@ -327,6 +332,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
       refs: sortBranches(refs, defaultBranch),
       lastFetchedAt,
       worktreeDates: commitDates,
+      defaultBranch,
       aheadBehind,
     };
   }
@@ -386,9 +392,12 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     const now = Date.now();
     const fetched = details === undefined ? undefined : `fetched ${formatAge(details.lastFetchedAt, now)}`;
     const stale = details !== undefined && isFetchStale(details.lastFetchedAt, now, this.deps.staleFetchHours());
-    // Only a non-default base is called out; the default needs no explanation.
-    item.description = [main?.branch, base !== undefined ? `base: ${baseLabel(base)}` : undefined, fetched].filter(Boolean).join(' · ');
-    item.tooltip = `${repo.root}${stale ? '\nNot fetched recently: comparisons with origin/… may be out of date. Right-click → Fetch.' : ''}`;
+    // Always say what the one-click compare uses, so neither side of a comparison is ever implicit.
+    const against = base !== undefined ? baseLabel(base) : details?.defaultBranch;
+    item.description = [main?.branch, against !== undefined ? `against ${against}` : undefined, fetched].filter(Boolean).join(' · ');
+    item.tooltip =
+      `${repo.root}\nThe compare button reviews against ${against ?? 'the default branch'}${base !== undefined ? ' (set for this repo)' : ' (default branch)'}. Right-click → Change Default Against…` +
+      (stale ? '\nNot fetched recently: comparisons with remote branches may be out of date. Right-click → Fetch.' : '');
     if (stale) {
       item.iconPath = new vscode.ThemeIcon('repo', new vscode.ThemeColor('list.warningForeground'));
     }
@@ -435,7 +444,7 @@ function worktreeItem(
   const location = isMain ? 'main worktree' : displayPath(repo.root, worktree.path);
   // Age of the latest commit, so the newest-first order is visible.
   const age = committedAt === undefined ? undefined : formatAge(committedAt, Date.now());
-  item.description = [isBase ? 'comparison base' : undefined, aheadBehindText(position.counts), location, age].filter(Boolean).join(' · ');
+  item.description = [isBase ? 'default Against' : undefined, aheadBehindText(position.counts), location, age].filter(Boolean).join(' · ');
   item.tooltip = withAheadBehindTooltip(worktree.path, position);
   item.contextValue = `comparable.worktree${isMain ? '.main' : ''}${isBase ? '.base' : ''}`;
   return item;
@@ -449,7 +458,7 @@ function branchItem(repo: RepoInfo, ref: RefEntry, checkedOutIn: string | undefi
   const checkedOut = checkedOutIn !== undefined ? `in ${checkedOutIn === repo.root ? 'main worktree' : path.basename(checkedOutIn)}` : undefined;
   const detail = checkedOut ?? (ref.upstream !== undefined ? `→ ${ref.upstream}` : undefined);
   const age = ref.committedAt === undefined ? undefined : formatAge(ref.committedAt, Date.now());
-  item.description = [isBase ? 'comparison base' : undefined, aheadBehindText(position.counts), detail, age].filter(Boolean).join(' · ');
+  item.description = [isBase ? 'default Against' : undefined, aheadBehindText(position.counts), detail, age].filter(Boolean).join(' · ');
   item.tooltip = withAheadBehindTooltip(`${ref.name} @ ${ref.sha}${checkedOutIn !== undefined ? `\nchecked out in ${checkedOutIn}` : ''}`, position);
   item.contextValue = `comparable.branch.${ref.kind}${checkedOutIn !== undefined ? '.checkedOut' : ''}${isBase ? '.base' : ''}`;
   return item;
@@ -464,16 +473,6 @@ interface RowAheadBehind {
 function withAheadBehindTooltip(tooltip: string, position: RowAheadBehind): string {
   const line = position.baseLabel === undefined ? undefined : aheadBehindTooltip(position.counts, position.baseLabel);
   return line === undefined ? tooltip : `${tooltip}\n${line}`;
-}
-
-/** Paths inside the repo are shown relative (`.claude/worktrees/x`); others with `~` for home. */
-function displayPath(repoRoot: string, target: string): string {
-  const relative = path.relative(repoRoot, target);
-  if (!relative.startsWith('..') && !path.isAbsolute(relative)) {
-    return relative;
-  }
-  const home = process.env.HOME;
-  return home !== undefined && target.startsWith(home) ? `~${target.slice(home.length)}` : target;
 }
 
 /**
@@ -494,7 +493,7 @@ export function toComparisonTarget(
         subject: { kind: 'worktree', root: node.worktree.path, label: worktreeLabel(node.worktree), includeUncommitted },
       };
     case 'branch':
-      return { repo: node.repo, subject: { kind: 'ref', ref: node.ref.name, label: node.ref.name } };
+      return { repo: node.repo, subject: { kind: 'ref', ref: node.ref.name, label: node.ref.name, refKind: node.ref.kind === 'remote' ? 'remote' : 'branch' } };
     default:
       return undefined;
   }

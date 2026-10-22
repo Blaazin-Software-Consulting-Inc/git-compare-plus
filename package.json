@@ -49,7 +49,7 @@
     "viewsWelcome": [
       {
         "view": "branchCompare.changes",
-        "contents": "Nothing compared yet.\n\nIn Repositories, click $(git-compare) next to a worktree or branch to compare it with the default branch (or the comparison base you set). Right-click for Compare With… and Set as Comparison Base.\n\n[Compare All Repos With Default Branch](command:branchCompare.compareAll)"
+        "contents": "Nothing compared yet.\n\n[Compare…](command:branchCompare.compareTwo)\n\nPicks what to review, then what to compare it against. Or, in Repositories, click $(git-compare) next to a worktree or branch to review it against its repo's default branch.\n\n[Compare All Repos With Default Branch](command:branchCompare.compareAll)"
       }
     ],
     "commands": [
@@ -67,24 +67,24 @@
       },
       {
         "command": "branchCompare.compare",
-        "title": "Compare With Base (default branch unless set)",
+        "title": "Review Against Default",
         "category": "Branch & Worktree Compare",
         "icon": "$(git-compare)"
       },
       {
         "command": "branchCompare.compareWith",
-        "title": "Compare With…",
+        "title": "Review Against…",
         "category": "Branch & Worktree Compare"
       },
       {
         "command": "branchCompare.setBase",
-        "title": "Set as Comparison Base",
+        "title": "Use as Default Against",
         "category": "Branch & Worktree Compare",
         "icon": "$(target)"
       },
       {
         "command": "branchCompare.clearBase",
-        "title": "Clear Comparison Base (use default branch)",
+        "title": "Reset Default Against (use the default branch)",
         "category": "Branch & Worktree Compare",
         "icon": "$(close)"
       },
@@ -104,6 +104,23 @@
         "title": "Open All Changes",
         "category": "Branch & Worktree Compare",
         "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "branchCompare.compareTwo",
+        "title": "Compare…",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "branchCompare.changeSubject",
+        "title": "Change What Is Reviewed…",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "branchCompare.changeDefaultBase",
+        "title": "Change Default Against…",
+        "category": "Branch & Worktree Compare"
       },
       {
         "command": "branchCompare.viewAsTree",
@@ -157,7 +174,7 @@
       },
       {
         "command": "branchCompare.changeBase",
-        "title": "Change What It Is Compared With…",
+        "title": "Change What It Is Compared Against…",
         "category": "Branch & Worktree Compare",
         "icon": "$(git-compare)"
       },
@@ -235,6 +252,11 @@
     "menus": {
       "view/title": [
         {
+          "command": "branchCompare.compareTwo",
+          "when": "view == branchCompare.repositories",
+          "group": "navigation@0"
+        },
+        {
           "command": "branchCompare.compareAll",
           "when": "view == branchCompare.repositories",
           "group": "navigation@1"
@@ -285,6 +307,11 @@
           "group": "1_setup@4"
         },
         {
+          "command": "branchCompare.changeSubject",
+          "when": "view == branchCompare.changes && branchCompare.hasComparison",
+          "group": "1_setup@0"
+        },
+        {
           "command": "branchCompare.toggleUncommitted",
           "when": "view == branchCompare.changes && branchCompare.hasComparison",
           "group": "1_setup@2"
@@ -301,6 +328,21 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "branchCompare.changeSubject",
+          "when": "view == branchCompare.changes && viewItem =~ /^header\\.subject$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "branchCompare.swapSides",
+          "when": "view == branchCompare.changes && viewItem =~ /^header\\.(subject|base)$/",
+          "group": "inline@2"
+        },
+        {
+          "command": "branchCompare.changeDefaultBase",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.repo/",
+          "group": "2_base@0"
+        },
         {
           "command": "branchCompare.openFile",
           "when": "view == branchCompare.changes && viewItem =~ /^changedFile\\.(?!deleted$)/",
@@ -404,6 +446,14 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "branchCompare.changeSubject",
+          "when": "branchCompare.hasComparison"
+        },
+        {
+          "command": "branchCompare.changeDefaultBase",
+          "when": "false"
+        },
         {
           "command": "branchCompare.compare",
           "when": "false"

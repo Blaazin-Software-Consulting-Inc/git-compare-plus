@@ -30,6 +30,7 @@ import type { Logger } from '../logger';
 import {
   COMMIT_LOG_FORMAT,
   REF_LIST_FORMAT,
+  TAG_LIST_FORMAT,
   countStatusEntries,
   lineStatsOfContent,
   parseAheadBehindRefs,
@@ -41,11 +42,13 @@ import {
   parseLsTreeZ,
   parseNumstatZ,
   parseRefList,
+  parseTagList,
   parseWorktreeList,
   type ChangedFile,
   type CommitEntry,
   type LineStats,
   type RefEntry,
+  type TagEntry,
   type WorktreeEntry,
 } from './parsers';
 
@@ -281,6 +284,19 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
       this.logger.debug('untracked file unreadable for line stats', { function: 'readUntrackedStats', absolutePath, reason: errorMessage(error) });
       return undefined;
     }
+  }
+
+  /** Tags, newest first (by tag or commit date). */
+  async tags(cwd: string): Promise<TagEntry[]> {
+    return parseTagList(await this.run(cwd, ['for-each-ref', '--sort=-creatordate', `--format=${TAG_LIST_FORMAT}`, 'refs/tags']));
+  }
+
+  /**
+   * The newest `limit` commits on any branch or tag (`git log --all`), for picking a commit as a
+   * comparison side. Newest first by commit date.
+   */
+  async recentCommits(cwd: string, limit: number): Promise<CommitEntry[]> {
+    return parseCommitLog(await this.run(cwd, ['log', '--all', '-z', `--format=${COMMIT_LOG_FORMAT}`, `--max-count=${limit}`, '--']));
   }
 
   /**

@@ -9,6 +9,18 @@ repositories in one window, such as `my-services.code-workspace`.
 Click the **Git Branch & Worktree Compare** icon in the activity bar (the left-hand icon strip).
 The sidebar has two sections.
 
+**Every comparison has two named sides,** used the same way everywhere:
+
+- **Reviewing**: what changed. It's the right side of every diff.
+- **Against**: what it's compared with. It's the left side.
+
+The quickest way to start is **Compare…** ($(git-compare) in the Repositories title bar, or the
+Command Palette). It asks two questions, "What do you want to review?" and "Compare it with…".
+Both lists are grouped the same way: *This window* (the worktree open here), *Worktrees*,
+*Branches*, *Remote branches*, *Tags*, and *Commits* (search recent commits by message, author or
+ID). You can also type any branch, tag or commit ID. The default branch is preselected for the
+second question.
+
 **Repositories**: every repo in the window. In a single-repo window it opens already expanded.
 
 ```
@@ -22,28 +34,27 @@ orders-service     feature/login-retry
 
 **Order:** in each group, the repo's default branch comes first, then `main`, then `master`.
 Everything else follows, newest commit first. The main worktree is always first under Worktrees.
-Each worktree and branch shows the age of its latest commit (`3 days ago`). **Compare With…**
-lists branches in the same order.
+Each worktree and branch shows the age of its latest commit (`3 days ago`). The Compare pickers
+list branches in the same order.
 
 **Ahead/behind:** each worktree and branch also shows how far it has moved from the repo's
-comparison base. `↑3 ↓12` means 3 commits the base doesn't have, and 12 commits on the base it
-doesn't have. A row level with the base shows no arrows; hover for the counts in words. The counts
-follow the comparison base: set another base and every row recounts against it. A worktree base
-counts from its last commit. With git 2.41 or later, every branch is counted in one git command.
+default Against. `↑3 ↓12` means 3 commits the Against side doesn't have, and 12 commits on it that
+this row doesn't have. A row level with it shows no arrows; hover for the counts in words. The
+counts follow the default Against: change it and every row recounts. A worktree counts from its
+last commit. With git 2.41 or later, every branch is counted in one git command.
 Older git (Apple's bundled git can lag behind) counts local branches and detached worktrees one
 by one, and remote branches show no counts.
 
-- **$(git-compare) button** (hover over a repo, worktree or branch): compare it with the repo's
-  **comparison base**. That's the repo's default branch (`origin/HEAD`, which is `master` or
-  `main` depending on the repo) unless you've set something else. If `origin` is your fork, set
-  `branchCompare.remote` to `upstream`; to pick a different default branch for one repo, use
-  `branchCompare.defaultBranches`.
-- **Right-click → Compare With…**: pick the default branch, another worktree, any branch, or type
-  a tag or commit ID.
-- **Right-click a worktree or branch → Set as Comparison Base**: from then on, the compare button
-  for that repo uses it. The base gets a $(target) marker, and the repo row shows
-  `base: …`. **Clear Comparison Base** goes back to the default branch. The choice is saved per
-  workspace.
+- **$(git-compare) button** (hover over a repo, worktree or branch): review it against the
+  repo's **default Against**. Every repo row says what that is (`against origin/main`). It's the
+  repo's default branch (`origin/HEAD`, which is `master` or `main` depending on the repo) unless
+  you've changed it. If `origin` is your fork, set `branchCompare.remote` to `upstream`; to pick a
+  different default branch for one repo, use `branchCompare.defaultBranches`.
+- **Right-click → Review Against…**: review that item against anything in the grouped picker.
+- **Right-click a repo → Change Default Against…**, or **right-click a worktree or branch → Use
+  as Default Against**: from then on, the compare button for that repo uses it. That item gets a
+  $(target) marker. **Reset Default Against** goes back to the default branch. The choice is
+  saved per workspace.
 - **Right-click a worktree → Open Worktree in New Window**.
 - **Title bar $(diff-multiple)**: compare every repo's main worktree with its own default branch
   in one go. **$(cloud-download)** fetches every repo.
@@ -77,10 +88,15 @@ checkout was one of those worktrees is deleted in the same pass.
 change that part, and the comparison re-runs:
 
 ```
-✎  Comparing: feature-x    worktree · INCLUDING uncommitted edits          ← click: include / exclude
-⇄  With: origin/master     default branch · click to change               ← click: pick another base
+✎  Reviewing: feature-x    worktree · INCLUDING uncommitted edits          ← click: include / exclude
+⇄  Against: origin/master  default branch · click to change               ← click: pick something else
 ⑂  Showing: changes since branch point · click for all differences        ← click: switch mode
 ```
+
+The Reviewing row has a $(list-selection) button to review something else against the same
+Against side. Both side rows have a $(arrow-swap) button that swaps them. Branches, tags and
+commits say which they are (`tag · committed work`), and a commit shows its short ID and message
+rather than a bare SHA.
 
 Below the header are the changed files, with A/M/D/R/U badges and lines added and removed
 (`+12 −3`, or `binary`). Each file's icon is a small GitHub-style bar of five squares: green for
@@ -262,7 +278,10 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
 | `src/gitActions.ts`             | Fetch, create/remove worktree, create/delete/switch branch, with their confirmation dialogs |
 | `src/operations.ts`             | Safety checks for those actions (counts of what would be lost), naming rules, fetch age |
 | `src/views/content.ts`          | `branch-compare:` documents (file content at a revision)             |
-| `src/aheadBehind.ts`            | Commits ahead of / behind the comparison base for each row (`↑3 ↓12`) |
+| `src/aheadBehind.ts`            | Commits ahead of / behind the default Against for each row (`↑3 ↓12`) |
+| `src/sideChoices.ts`            | The grouped choices for "What do you want to review?" / "Compare it with…" |
+| `src/views/sidePicker.ts`       | Renders those choices as a quick pick; Search commits…; typed refs    |
+| `src/paths.ts`                  | Path comparison (separators, Windows case) and short path display     |
 | `src/defaultBranch.ts`          | Which branch is a repo's default: remote setting, per-repo overrides, fallbacks |
 | `src/treeOrder.ts`              | Order of worktrees and branches: default/main/master first, then newest |
 | `src/branchCandidates.ts`       | Order of branch names when comparing several repos at once          |

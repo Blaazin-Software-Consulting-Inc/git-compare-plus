@@ -41,6 +41,28 @@ export interface LineStats {
   readonly binary: boolean;
 }
 
+/** A tag from `git for-each-ref refs/tags` (format `TAG_LIST_FORMAT`). */
+export interface TagEntry {
+  readonly name: string;
+  /** Tag date (annotated) or commit date (lightweight), ms since epoch; undefined if unparseable. */
+  readonly createdAt?: number;
+}
+
+/** `--format` for tags matching `parseTagList`. */
+export const TAG_LIST_FORMAT = '%(refname:short)%00%(creatordate:unix)';
+
+/** Parse `git for-each-ref --format=TAG_LIST_FORMAT refs/tags`. */
+export function parseTagList(stdout: string): TagEntry[] {
+  const tags: TagEntry[] = [];
+  for (const line of stdout.split('\n')) {
+    const [name, createdUnix] = line.split('\0');
+    if (name) {
+      tags.push({ name, createdAt: unixSecondsToMs(createdUnix) });
+    }
+  }
+  return tags;
+}
+
 /** One commit of a comparison's history (`git log`, format `COMMIT_LOG_FORMAT`). */
 export interface CommitEntry {
   /** Full SHA. */

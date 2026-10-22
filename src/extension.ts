@@ -20,7 +20,7 @@ import { ChangesAutoRefresh } from './autoRefresh/changesAutoRefresh';
 import { followGitChanges } from './autoRefresh/gitEvents';
 import { stableSignature } from './autoRefresh/scheduling';
 import { RefType, rankBranchCandidates } from './branchCandidates';
-import { BaseStore, baseLabel, baseMatches } from './baseStore';
+import { BaseStore, baseMatches } from './baseStore';
 import {
   baseForcesDirect,
   diffSides,
@@ -43,7 +43,9 @@ import { discoverRepos, getGitApi, type GitApi } from './repoDiscovery';
 import { ReviewStore } from './review/reviewStore';
 import { groupReviewToggles } from './review/reviewToggles';
 import type { BaseFetchInfo, ComparisonSetup } from './views/changesHeader';
+import { sideChoices, type SideRole, type SideValue } from './sideChoices';
 import { swapSides } from './swapSides';
+import { pickSide } from './views/sidePicker';
 import { ChangesProvider, type ChangesLayout, type ChangesNode } from './views/changesView';
 import { commitTitle } from './views/commitText';
 import { CONTENT_SCHEME, RevisionContentProvider, sideToUri } from './views/content';
@@ -135,6 +137,9 @@ export function activate(context: vscode.ExtensionContext): void {
     register('branchCompare.viewAsTree', () => setChangesLayout('tree'), logger),
     register('branchCompare.viewAsList', () => setChangesLayout('list'), logger),
     register('branchCompare.swapSides', () => commands.swapSides(), logger),
+    register('branchCompare.compareTwo', () => commands.compareTwo(), logger),
+    register('branchCompare.changeSubject', () => commands.changeSubject(), logger),
+    register('branchCompare.changeDefaultBase', (node?: RepoTreeNode) => commands.changeDefaultBase(node), logger),
     register('branchCompare.openFile', (node: ChangesNode) => commands.openFileSide(node, 'right'), logger),
     register('branchCompare.openFileAtBase', (node: ChangesNode) => commands.openFileSide(node, 'left'), logger),
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -168,6 +173,10 @@ export function activate(context: vscode.ExtensionContext): void {
     register('branchCompare.switchBranch', (node?: RepoTreeNode) => actions.switchBranch(node), logger),
   );
 }
+
+// Commits offered by "Search commits…": enough to reach back a few weeks on a busy repo while
+// keeping the list instant to filter. Older commits can still be pasted by ID.
+const RECENT_COMMITS_LIMIT = 500;
 
 // Re-render relative ages ("3 h ago", fetch staleness) once a minute. Redraw only, no git commands.
 const AGE_REFRESH_MS = 60_000;
@@ -418,25 +427,92 @@ class CompareCommands {
     if (target === undefined) {
       return;
     }
-    const baseSpec = base === 'stored' ? (this.bases.get(target.repo.commonDir) ?? { kind: 'default' as const }) : await this.pickBaseForRepo(target.repo, target.subject);
+    const baseSpec =
+      base === 'stored'
+        ? (this.bases.get(target.repo.commonDir) ?? { kind: 'default' as const })
+        : await this.pickAgainst(target.repo, target.subject, `Review ${target.subject.label} against…`);
     // Undefined = the picker was dismissed.
     if (baseSpec === undefined) {
       return;
     }
     if (isSameSide(target.subject, baseSpec)) {
-      void vscode.window.showInformationMessage(`${target.subject.label} is the comparison base. Use Compare With… to pick something else.`);
+      void vscode.window.showInformationMessage(`${target.subject.label} is this repo's default Against, so there is nothing to compare. Right-click → Compare With… to pick something else.`);
       return;
     }
     await this.run({ requests: [target], base: baseSpec, mode });
   }
 
-  /** "Set as Comparison Base": the inline compare button of this repo will use it until cleared. */
+  /**
+   * "Compare…": the two questions in order (what to review, then what to compare it against),
+   * after picking the repo when the window has several. "All repositories" runs Compare All.
+   */
+  async compareTwo(): Promise<void> {
+    const repos = await this.repositories.getRepos();
+    const repo = await pickRepository(repos);
+    if (repo === 'all') {
+      await this.compareAll();
+      return;
+    }
+    if (repo === undefined) {
+      return;
+    }
+    const subject = await this.pickReviewing(repo, 'Compare (1 of 2): what do you want to review?');
+    if (subject === undefined) {
+      return;
+    }
+    const base = await this.pickAgainst(repo, subject, `Compare (2 of 2): review ${subject.label} against…`);
+    if (base === undefined) {
+      return;
+    }
+    this.logger.info('comparison picked', { function: 'compareTwo', repo: repo.name, subject, base });
+    await this.run({ requests: [{ repo, subject }], base, mode: settings().mode });
+  }
+
+  /** Header "Reviewing" row → Change: pick what to review instead, keeping the Against side. */
+  async changeSubject(): Promise<void> {
+    const state = this.changes.current();
+    if (state === undefined) {
+      return;
+    }
+    const only = state.setup.requests.length === 1 ? state.setup.requests[0] : undefined;
+    if (only === undefined) {
+      void vscode.window.showInformationMessage('Several repositories are compared. Use Compare… to review something else in one of them.');
+      return;
+    }
+    const subject = await this.pickReviewing(only.repo, `Review instead of ${only.subject.label}…`);
+    if (subject === undefined) {
+      return;
+    }
+    if (isSameSide(subject, state.setup.base)) {
+      void vscode.window.showInformationMessage(`${subject.label} is what it is compared against. Pick something else, or use ⇄ to swap the sides.`);
+      return;
+    }
+    await this.run({ ...state.setup, requests: [{ repo: only.repo, subject }] });
+  }
+
+  /** Repo row → "Change Default Against…": what this repo's one-click compare uses. */
+  async changeDefaultBase(node: RepoTreeNode | undefined): Promise<void> {
+    if (node === undefined || node.kind !== 'repo') {
+      await vscode.commands.executeCommand('branchCompare.repositories.focus');
+      return;
+    }
+    const base = await this.pickAgainst(node.repo, undefined, `${node.repo.name}: compare against what by default?`);
+    if (base === undefined) {
+      return;
+    }
+    await this.bases.set(node.repo.commonDir, base);
+    this.logger.info('default against changed', { function: 'changeDefaultBase', repo: node.repo.name, base });
+    // Reload, not just redraw: the ahead/behind counts on every row are relative to it.
+    this.repositories.refreshRepo(node.repo);
+  }
+
+  /** "Use as Default Against": the inline compare button of this repo uses it until reset. */
   async setBase(node: RepoTreeNode): Promise<void> {
     let base: BaseSpec | undefined;
     if (node.kind === 'worktree') {
       base = await this.worktreeBase(node.worktree);
     } else if (node.kind === 'branch') {
-      base = { kind: 'ref', ref: node.ref.name };
+      base = { kind: 'ref', ref: node.ref.name, refKind: node.ref.kind === 'remote' ? 'remote' : 'branch' };
     }
     if (base === undefined || (node.kind !== 'worktree' && node.kind !== 'branch')) {
       return;
@@ -514,7 +590,7 @@ class CompareCommands {
     // A one-commit comparison: left = first parent, right = the commit, both read from git.
     const commitResult: ComparisonResult = {
       repo: result.repo,
-      subject: { kind: 'ref', ref: commit.sha, label: commitTitle(commit) },
+      subject: { kind: 'ref', ref: commit.sha, label: commitTitle(commit), refKind: 'commit' },
       outcome: 'compared',
       mode: 'direct',
       baseLabel: `${commit.sha.slice(0, 7)}^`,
@@ -537,7 +613,7 @@ class CompareCommands {
       return;
     }
     const requests = state.setup.requests.filter((r) => r.repo.commonDir === node.result.repo.commonDir && isSameSubject(r.subject, node.result.subject));
-    await this.run({ ...state.setup, requests, base: { kind: 'ref', ref: node.commit.sha } });
+    await this.run({ ...state.setup, requests, base: { kind: 'ref', ref: node.commit.sha, refKind: 'commit', label: commitTitle(node.commit) } });
   }
 
   /** Commit context menu: put the full SHA on the clipboard. */
@@ -635,20 +711,21 @@ class CompareCommands {
     await this.run(state.setup);
   }
 
-  /** Header row "With: …": pick a different base for the comparison on display. */
+  /** Header row "Against: …": pick a different base for the comparison on display. */
   async changeBase(): Promise<void> {
     const state = this.changes.current();
     if (state === undefined) {
       return;
     }
     const only = state.setup.requests.length === 1 ? state.setup.requests[0] : undefined;
-    const base = only !== undefined ? await this.pickBaseForRepo(only.repo, only.subject) : await this.pickBaseAcrossRepos(state.setup.requests);
+    const base =
+      only !== undefined ? await this.pickAgainst(only.repo, only.subject, `Review ${only.subject.label} against…`) : await this.pickBaseAcrossRepos(state.setup.requests);
     if (base !== undefined) {
       await this.run({ ...state.setup, base });
     }
   }
 
-  /** Header row "Comparing: …": include / exclude the subject worktree's uncommitted edits. */
+  /** Header row "Reviewing: …": include / exclude the subject worktree's uncommitted edits. */
   async toggleUncommitted(): Promise<void> {
     const state = this.changes.current();
     if (state === undefined) {
@@ -713,37 +790,65 @@ class CompareCommands {
     return { age: formatAge(oldest, now), stale: isFetchStale(oldest, now, settings().staleFetchHours) };
   }
 
-  /** Base picker for one repo: default branch, its other worktrees, its branches, or a typed ref. */
-  private async pickBaseForRepo(repo: RepoInfo, subject: Subject): Promise<BaseSpec | undefined> {
+  /**
+   * "Compare it with…" for one repo: the grouped choices of sideChoices.ts (Suggested, This
+   * window, Worktrees, Branches, Remote branches, Tags, Commits), minus what is being reviewed.
+   * @param reviewing - the Reviewing side, left out of the choices; undefined when choosing the
+   *   repo's default Against.
+   * @returns the Against side, or undefined if the picker was dismissed.
+   */
+  private async pickAgainst(repo: RepoInfo, reviewing: Subject | undefined, title: string): Promise<BaseSpec | undefined> {
+    const value = await this.pickSideValue(repo, 'against', reviewing, title);
+    switch (value?.kind) {
+      case undefined:
+      case 'searchCommits':
+        return undefined;
+      case 'default':
+        return { kind: 'default' };
+      case 'stored':
+        return value.base;
+      case 'worktree':
+        return this.worktreeBase(value.worktree);
+      case 'ref':
+        return { kind: 'ref', ref: value.ref, label: value.label, refKind: value.refKind };
+    }
+  }
+
+  /** "What do you want to review?" for one repo. */
+  private async pickReviewing(repo: RepoInfo, title: string): Promise<Subject | undefined> {
+    const value = await this.pickSideValue(repo, 'review', undefined, title);
+    switch (value?.kind) {
+      case 'worktree':
+        return { kind: 'worktree', root: value.worktree.path, label: worktreeLabel(value.worktree), includeUncommitted: settings().includeUncommitted };
+      case 'ref':
+        return { kind: 'ref', ref: value.ref, label: value.label, refKind: value.refKind };
+      default:
+        // default / stored are Against-only choices; undefined = dismissed.
+        return undefined;
+    }
+  }
+
+  private async pickSideValue(repo: RepoInfo, role: SideRole, reviewing: Subject | undefined, title: string): Promise<SideValue | undefined> {
     const git = await this.getGit();
-    const [defaultBranch, refs, worktrees] = await Promise.all([
+    const [defaultBranch, refs, worktrees, tags] = await Promise.all([
       git.defaultBranch(repo.root),
       this.repositories.getRefs(repo),
       this.repositories.getWorktrees(repo),
+      git.tags(repo.root),
     ]);
-    const stored = this.bases.get(repo.commonDir);
-    const otherWorktrees = worktrees.filter((w) => !(subject.kind === 'worktree' && w.path === subject.root));
-    // `refs` arrive in display order (treeOrder.ts: default branch, main/master, newest first),
-    // the same order as the Repositories view.
-    const branches = refs.filter((r) => !(subject.kind === 'ref' && r.name === subject.ref));
-
-    const items: BasePickItem[] = [
-      { label: '$(star-full) Default branch', description: defaultBranch ?? 'not found', base: { kind: 'default' } },
-      ...(stored !== undefined ? [{ label: '$(target) Comparison base set for this repo', description: baseLabel(stored), base: stored }] : []),
-      ...(otherWorktrees.length > 0 ? [{ label: 'Worktrees', kind: vscode.QuickPickItemKind.Separator }] : []),
-      ...otherWorktrees.map((w) => ({ label: `$(folder) ${worktreeLabel(w)}`, description: w.path, worktree: w })),
-      { label: 'Branches', kind: vscode.QuickPickItemKind.Separator },
-      ...branches.map((r) => ({
-        label: `$(${r.kind === 'remote' ? 'cloud' : 'git-branch'}) ${r.name}`,
-        description: r.committedAt === undefined ? undefined : formatAge(r.committedAt, Date.now()),
-        base: { kind: 'ref' as const, ref: r.name },
-      })),
-    ];
-    const picked = await pickWithFreeText(items, `Compare ${subject.label} with…`);
-    if (picked?.worktree !== undefined) {
-      return this.worktreeBase(picked.worktree);
-    }
-    return picked?.base;
+    const choices = sideChoices({
+      role,
+      repoRoot: repo.root,
+      worktrees,
+      refs,
+      tags,
+      windowFolders: (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath),
+      defaultBranch,
+      storedBase: role === 'against' ? this.bases.get(repo.commonDir) : undefined,
+      reviewing,
+      nowMs: Date.now(),
+    });
+    return pickSide(choices, role, title, () => git.recentCommits(repo.root, RECENT_COMMITS_LIMIT));
   }
 
   /** Base picker for a multi-repo comparison: default branches, or a branch name shared across repos. */
@@ -788,6 +893,26 @@ class CompareCommands {
     );
     return choice === undefined ? undefined : { kind: 'worktree', root: worktree.path, label, includeUncommitted: choice.include };
   }
+}
+
+/**
+ * Which repo to compare in: skipped when there is only one. Offers "All repositories" first,
+ * which compares every repo's main worktree against its own default branch.
+ * @returns a repo, 'all', or undefined when dismissed or there are no repos.
+ */
+async function pickRepository(repos: readonly RepoInfo[]): Promise<RepoInfo | 'all' | undefined> {
+  if (repos.length === 0) {
+    void vscode.window.showInformationMessage('No git repositories in this window.');
+    return undefined;
+  }
+  if (repos.length === 1) {
+    return repos[0];
+  }
+  const items: (vscode.QuickPickItem & { readonly repo: RepoInfo | 'all' })[] = [
+    { label: '$(repo) All repositories', description: "each main worktree against its own default branch", repo: 'all' },
+    ...repos.map((repo) => ({ label: `$(repo) ${repo.name}`, description: repo.root, repo })),
+  ];
+  return (await vscode.window.showQuickPick(items, { title: 'Compare: in which repository?' }))?.repo;
 }
 
 /** Quick pick where Enter on text that matches nothing uses the text as a ref (tag, SHA, …). */

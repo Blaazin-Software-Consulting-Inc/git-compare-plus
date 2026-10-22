@@ -45,6 +45,9 @@ describe('isBaseSpec', () => {
     expect(isBaseSpec({ kind: 'ref', ref: 'main' })).toBe(true);
     expect(isBaseSpec({ kind: 'worktree', root: '/w', label: 'w', includeUncommitted: false })).toBe(true);
     expect(isBaseSpec({ kind: 'ref' })).toBe(false);
+    expect(isBaseSpec({ kind: 'ref', ref: 'v1', refKind: 'tag', label: 'v1' })).toBe(true);
+    expect(isBaseSpec({ kind: 'ref', ref: 'v1', refKind: 'nonsense' })).toBe(false);
+    expect(isBaseSpec({ kind: 'ref', ref: 'v1', label: 3 })).toBe(false);
     expect(isBaseSpec({ kind: 'other' })).toBe(false);
     expect(isBaseSpec(null)).toBe(false);
   });

@@ -54,15 +54,24 @@ export interface RepoInfo {
   readonly commonDir: string;
 }
 
-/** The side being reviewed. */
+/**
+ * What a ref side is, for wording only ("branch", "tag", "commit"); git treats them all as refs.
+ * Optional: undefined (older saved bases, typed refs) is worded as "ref".
+ */
+export type RefKind = 'branch' | 'remote' | 'tag' | 'commit';
+
+/** The side being reviewed: the RIGHT side of every diff ("Reviewing"). */
 export type Subject =
   | { readonly kind: 'worktree'; readonly root: string; readonly label: string; readonly includeUncommitted: boolean }
-  | { readonly kind: 'ref'; readonly ref: string; readonly label: string };
+  | { readonly kind: 'ref'; readonly ref: string; readonly label: string; readonly refKind?: RefKind };
 
-/** The side being compared against. Persisted per repo (baseStore.ts), so keep it JSON-serializable. */
+/**
+ * The side being compared against: the LEFT side of every diff ("Against"). Persisted per repo
+ * (baseStore.ts), so keep it JSON-serializable.
+ */
 export type BaseSpec =
   | { readonly kind: 'default' }
-  | { readonly kind: 'ref'; readonly ref: string }
+  | { readonly kind: 'ref'; readonly ref: string; readonly refKind?: RefKind; readonly label?: string }
   | { readonly kind: 'worktree'; readonly root: string; readonly label: string; readonly includeUncommitted: boolean };
 
 /** How the left-hand side is chosen; see module doc. */
@@ -304,7 +313,7 @@ async function resolveBase(git: ComparisonPort, cwd: string, base: BaseSpec, inc
       return ref === undefined ? undefined : { label: ref, commitish: ref };
     }
     case 'ref':
-      return { label: base.ref, commitish: base.ref };
+      return { label: base.label ?? base.ref, commitish: base.ref };
     case 'worktree': {
       if (base.includeUncommitted) {
         return { label: base.label, tree: await git.snapshotWorktree(base.root, includeUntracked) };

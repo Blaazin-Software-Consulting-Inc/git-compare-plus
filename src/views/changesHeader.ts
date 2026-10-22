@@ -2,16 +2,20 @@
  * changesHeader — the three clickable rows at the top of the Changes view that say exactly what
  * is being compared, and let the user change it:
  *
- *   Comparing: feature-x     worktree · including uncommitted edits          (click: toggle)
- *   With: origin/master      default branch · click to change               (click: pick base)
+ *   Reviewing: feature-x     worktree · INCLUDING uncommitted edits         (click: toggle)
+ *   Against: origin/master   default branch · click to change               (click: pick a side)
  *   Showing: changes since branch point · click for all differences         (click: toggle mode)
+ *
+ * The two side names are used everywhere in the UI: "Reviewing" is what changed (the RIGHT side
+ * of every diff), "Against" is what it is compared with (the LEFT side). Both rows carry an
+ * inline ⇄ button that swaps them (swapSides.ts).
  *
  * Uncommitted edits must never be silently missing, so when a side is "committed only" and the
  * worktree HAS uncommitted files, the row says how many are NOT included and is flagged as a warning.
  *
  * Pure (no `vscode` import) so the wording is unit-tested; changesView.ts renders the rows.
  */
-import { baseForcesDirect, type BaseSpec, type CompareMode, type ComparisonRequest, type ComparisonResult } from '../comparison';
+import { baseForcesDirect, type BaseSpec, type CompareMode, type ComparisonRequest, type ComparisonResult, type RefKind } from '../comparison';
 
 /** What the user asked for; the Changes view re-runs this when a header row is clicked. */
 export interface ComparisonSetup {
@@ -63,12 +67,20 @@ function withFetchWarning(row: HeaderRow, baseFetch: BaseFetchInfo | undefined):
 
 function subjectRow(setup: ComparisonSetup, results: readonly ComparisonResult[]): HeaderRow {
   const single = setup.requests.length === 1 ? setup.requests[0] : undefined;
-  const label = single !== undefined ? `Comparing: ${single.subject.label}` : `Comparing: ${setup.requests.length} repos (main worktrees)`;
+  const label = single !== undefined ? `Reviewing: ${single.subject.label}` : `Reviewing: ${setup.requests.length} repos (main worktrees)`;
   const worktreeSubjects = setup.requests.filter((r) => r.subject.kind === 'worktree');
 
-  // A branch has no uncommitted edits: nothing to toggle.
+  // A branch, tag or commit has no uncommitted edits: nothing to toggle.
   if (worktreeSubjects.length === 0) {
-    return { role: 'subject', label, description: 'branch · committed work', tooltip: 'The branch tip, as committed.', icon: 'git-branch', warning: false };
+    const refKind = single?.subject.kind === 'ref' ? single.subject.refKind : 'branch';
+    return {
+      role: 'subject',
+      label,
+      description: `${refKindText(refKind)} · committed work`,
+      tooltip: 'What changed: the right side of every diff, as committed.',
+      icon: refKindIcon(refKind),
+      warning: false,
+    };
   }
 
   const including = worktreeSubjects.every((r) => r.subject.kind === 'worktree' && r.subject.includeUncommitted);
@@ -77,7 +89,7 @@ function subjectRow(setup: ComparisonSetup, results: readonly ComparisonResult[]
       role: 'subject',
       label,
       description: `${single !== undefined ? 'worktree · ' : ''}INCLUDING uncommitted edits`,
-      tooltip: 'Files as they are on disk: commits plus staged, unstaged and (per setting) untracked edits.\nClick to compare committed work only.',
+      tooltip: 'What changed (the right side of every diff): files as they are on disk, i.e. commits plus staged, unstaged and (per setting) untracked edits.\nClick to review committed work only.',
       icon: 'edit',
       warning: false,
       command: 'branchCompare.toggleUncommitted',
@@ -89,7 +101,7 @@ function subjectRow(setup: ComparisonSetup, results: readonly ComparisonResult[]
     role: 'subject',
     label,
     description: `${single !== undefined ? 'worktree · ' : ''}committed only${excluded > 0 ? ` · ${plural(excluded, 'uncommitted file')} NOT included` : ''}`,
-    tooltip: 'Only the worktree\'s last commit (HEAD) is compared; edits on disk are ignored.\nClick to include uncommitted edits.',
+    tooltip: 'What changed (the right side of every diff): only the worktree\'s last commit (HEAD); edits on disk are ignored.\nClick to include uncommitted edits.',
     icon: excluded > 0 ? 'warning' : 'git-commit',
     warning: excluded > 0,
     command: 'branchCompare.toggleUncommitted',
@@ -103,28 +115,40 @@ function baseRow(setup: ComparisonSetup, results: readonly ComparisonResult[]): 
 
   switch (base.kind) {
     case 'default': {
-      const label = resolvedLabels.length === 1 ? `With: ${resolvedLabels[0]}` : "With: each repo's default branch";
+      const label = resolvedLabels.length === 1 ? `Against: ${resolvedLabels[0]}` : "Against: each repo's default branch";
       const detail = resolvedLabels.length > 1 ? resolvedLabels.join(', ') : 'default branch';
-      return { ...common, label, description: `${detail} · click to change`, tooltip: "Each repo's default branch: its remote's HEAD, unless the branchCompare.defaultBranches setting names another.\nClick to compare with another branch or worktree.", warning: false };
+      return {
+        ...common,
+        label,
+        description: `${detail} · click to change`,
+        tooltip: `${LEFT_SIDE} Each repo's default branch: its remote's HEAD, unless the branchCompare.defaultBranches setting names another.\nClick to compare against something else.`,
+        warning: false,
+      };
     }
     case 'ref':
-      return { ...common, label: `With: ${base.ref}`, description: 'click to change', tooltip: 'Click to compare with another branch or worktree.', warning: false };
+      return {
+        ...common,
+        label: `Against: ${base.label ?? base.ref}`,
+        description: `${refKindText(base.refKind)} · click to change`,
+        tooltip: `${LEFT_SIDE}\nClick to compare against something else.`,
+        warning: false,
+      };
     case 'worktree': {
       if (base.includeUncommitted) {
         return {
           ...common,
-          label: `With: ${base.label}`,
+          label: `Against: ${base.label}`,
           description: 'worktree · INCLUDING its uncommitted edits · click to change',
-          tooltip: 'A snapshot of that worktree\'s files on disk, taken when the comparison ran (Refresh to retake).',
+          tooltip: `${LEFT_SIDE} A snapshot of that worktree's files on disk, taken when the comparison ran (Refresh to retake).`,
           warning: false,
         };
       }
       const excluded = sum(results.map((r) => r.excludedUncommitted.base));
       return {
         ...common,
-        label: `With: ${base.label}`,
+        label: `Against: ${base.label}`,
         description: `worktree · committed only${excluded > 0 ? ` · ${plural(excluded, 'uncommitted file')} NOT included` : ''} · click to change`,
-        tooltip: 'That worktree\'s last commit (HEAD); edits on disk there are ignored.',
+        tooltip: `${LEFT_SIDE} That worktree's last commit (HEAD); edits on disk there are ignored.`,
         icon: excluded > 0 ? 'warning' : common.icon,
         warning: excluded > 0,
       };
@@ -163,6 +187,38 @@ function modeRow(setup: ComparisonSetup): HeaderRow {
         warning: false,
         command: 'branchCompare.toggleMode',
       };
+}
+
+// Every "Against" tooltip starts by saying which side of the diff it is.
+const LEFT_SIDE = 'What it is compared with: the left side of every diff.';
+
+/** Wording for a ref side; undefined (a typed ref, or a base saved by an older version) is "ref". */
+export function refKindText(refKind: RefKind | undefined): string {
+  switch (refKind) {
+    case 'branch':
+      return 'branch';
+    case 'remote':
+      return 'remote branch';
+    case 'tag':
+      return 'tag';
+    case 'commit':
+      return 'commit';
+    default:
+      return 'ref';
+  }
+}
+
+function refKindIcon(refKind: RefKind | undefined): string {
+  switch (refKind) {
+    case 'tag':
+      return 'tag';
+    case 'commit':
+      return 'git-commit';
+    case 'remote':
+      return 'cloud';
+    default:
+      return 'git-branch';
+  }
 }
 
 function sum(values: readonly (number | undefined)[]): number {

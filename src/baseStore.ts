@@ -60,7 +60,11 @@ export function isBaseSpec(value: unknown): value is BaseSpec {
     case 'default':
       return true;
     case 'ref':
-      return 'ref' in value && typeof value.ref === 'string';
+      return (
+        'ref' in value && typeof value.ref === 'string' &&
+        (!('refKind' in value) || value.refKind === undefined || isRefKind(value.refKind)) &&
+        (!('label' in value) || value.label === undefined || typeof value.label === 'string')
+      );
     case 'worktree':
       return (
         'root' in value && typeof value.root === 'string' &&
@@ -70,6 +74,10 @@ export function isBaseSpec(value: unknown): value is BaseSpec {
     default:
       return false;
   }
+}
+
+function isRefKind(value: unknown): boolean {
+  return value === 'branch' || value === 'remote' || value === 'tag' || value === 'commit';
 }
 
 /** True when `base` points at this worktree (by path) or this branch (by name). */
@@ -86,7 +94,7 @@ export function baseLabel(base: BaseSpec): string {
     case 'default':
       return 'default branch';
     case 'ref':
-      return base.ref;
+      return base.label ?? base.ref;
     case 'worktree':
       return `${base.label} (worktree${base.includeUncommitted ? ' + uncommitted' : ', committed'})`;
   }

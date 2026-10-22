@@ -34,9 +34,10 @@ export function swapSides(setup: ComparisonSetup, results: readonly ComparisonRe
 function baseAsSubject(base: BaseSpec, resolvedLabel: string | undefined): Subject | undefined {
   switch (base.kind) {
     case 'default':
-      return resolvedLabel === undefined ? undefined : { kind: 'ref', ref: resolvedLabel, label: resolvedLabel };
+      // The default branch is usually a remote one (`origin/main`), occasionally local (`main`).
+      return resolvedLabel === undefined ? undefined : { kind: 'ref', ref: resolvedLabel, label: resolvedLabel, refKind: resolvedLabel.includes('/') ? 'remote' : 'branch' };
     case 'ref':
-      return { kind: 'ref', ref: base.ref, label: base.ref };
+      return { kind: 'ref', ref: base.ref, label: base.label ?? base.ref, refKind: base.refKind };
     case 'worktree':
       return { kind: 'worktree', root: base.root, label: base.label, includeUncommitted: base.includeUncommitted };
   }
@@ -45,5 +46,5 @@ function baseAsSubject(base: BaseSpec, resolvedLabel: string | undefined): Subje
 function subjectAsBase(subject: Subject): BaseSpec {
   return subject.kind === 'worktree'
     ? { kind: 'worktree', root: subject.root, label: subject.label, includeUncommitted: subject.includeUncommitted }
-    : { kind: 'ref', ref: subject.ref };
+    : { kind: 'ref', ref: subject.ref, refKind: subject.refKind, label: subject.label };
 }

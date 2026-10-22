@@ -20,7 +20,11 @@ describe('swapSides', () => {
   it('swaps a branch with the default branch, using the branch the default resolved to', () => {
     const outcome = swapSides(setup([request({ kind: 'ref', ref: 'feature', label: 'feature' })], { kind: 'default' }), [result('origin/master')]);
     expect(outcome).toEqual({
-      setup: { requests: [request({ kind: 'ref', ref: 'origin/master', label: 'origin/master' })], base: { kind: 'ref', ref: 'feature' }, mode: 'merge-base' },
+      setup: {
+        requests: [request({ kind: 'ref', ref: 'origin/master', label: 'origin/master', refKind: 'remote' })],
+        base: { kind: 'ref', ref: 'feature', label: 'feature', refKind: undefined },
+        mode: 'merge-base',
+      },
     });
   });
 

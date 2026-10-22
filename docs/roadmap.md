@@ -26,7 +26,7 @@ they're broken.
 
 ## Phases
 
-### Phase 0: Foundations (done, awaiting review)
+### Phase 0: Foundations (done)
 
 - Setting for the remote name and a per-repo default-branch override, so fork workflows
   (`origin` = your fork, `upstream` = the project) pick the right default branch.
@@ -35,7 +35,7 @@ they're broken.
 - Performance budgets enforced in CI: package size limit, load time limit, and no git commands
   while nothing is shown.
 
-### Phase 1: Clear comparison sides
+### Phase 1: Clear comparison sides (done, awaiting review)
 
 Replaces the "comparison base" idea, which is hard to explain, with two named sides.
 
@@ -47,8 +47,9 @@ Replaces the "comparison base" idea, which is hard to explain, with two named si
   is preselected as the second side.
 - **Commits as either side** anywhere a branch can be used.
 - **Diff tabs name both sides** consistently: `file.ts (origin/main ↔ feature-x)`.
-- The repo's saved "default comparison" (today's "Set as Comparison Base") is kept, but shown as
-  "Compare with: origin/main (change)" on the repo row.
+- The repo's saved default (formerly "Set as Comparison Base") is now the **default Against**:
+  every repo row shows `against origin/main`, with **Change Default Against…** on the repo row and
+  **Use as Default Against** on worktrees and branches.
 
 ### Phase 2: Clear worktree and branch switching
 

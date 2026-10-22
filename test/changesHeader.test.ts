@@ -19,7 +19,7 @@ describe('subject row', () => {
   it('says INCLUDING uncommitted edits and toggles on click', () => {
     const { subjectRow } = header(wt(true), { kind: 'default' });
     expect(subjectRow).toMatchObject({
-      label: 'Comparing: feature-x',
+      label: 'Reviewing: feature-x',
       description: 'worktree · INCLUDING uncommitted edits',
       warning: false,
       command: 'branchCompare.toggleUncommitted',
@@ -37,9 +37,28 @@ describe('subject row', () => {
   });
 
   it('a branch has nothing to toggle', () => {
-    const { subjectRow } = header({ kind: 'ref', ref: 'feat', label: 'feat' }, { kind: 'default' });
-    expect(subjectRow).toMatchObject({ description: 'branch · committed work' });
+    const { subjectRow } = header({ kind: 'ref', ref: 'feat', label: 'feat', refKind: 'branch' }, { kind: 'default' });
+    expect(subjectRow).toMatchObject({ description: 'branch · committed work', icon: 'git-branch' });
     expect(subjectRow?.command).toBeUndefined();
+  });
+
+  it('names tags, commits and remote branches, and plain "ref" when the kind is unknown', () => {
+    const subject = (refKind?: 'tag' | 'commit' | 'remote') => header({ kind: 'ref', ref: 'x', label: 'x', refKind }, { kind: 'default' }).subjectRow;
+    expect(subject('tag')).toMatchObject({ description: 'tag · committed work', icon: 'tag' });
+    expect(subject('commit')).toMatchObject({ description: 'commit · committed work', icon: 'git-commit' });
+    expect(subject('remote')).toMatchObject({ description: 'remote branch · committed work', icon: 'cloud' });
+    expect(subject()).toMatchObject({ description: 'ref · committed work' });
+  });
+
+  it('says which side of the diff each row is', () => {
+    const { subjectRow, baseRow } = header(wt(true), { kind: 'default' });
+    expect(subjectRow?.tooltip).toContain('right side of every diff');
+    expect(baseRow?.tooltip).toContain('left side of every diff');
+  });
+
+  it('labels a commit base by its title rather than its SHA', () => {
+    const { baseRow } = header(wt(true), { kind: 'ref', ref: 'abcdef0123', refKind: 'commit', label: 'abcdef0 Fix login' });
+    expect(baseRow).toMatchObject({ label: 'Against: abcdef0 Fix login', description: 'commit · click to change' });
   });
 
   it('sums excluded files across repos and says how many repos', () => {
@@ -55,14 +74,14 @@ describe('subject row', () => {
       result(wt(false), { excludedUncommitted: { subject: 1 } }),
       result(wt(false), { excludedUncommitted: { subject: 2 } }),
     ]);
-    expect(subjectRow).toMatchObject({ label: 'Comparing: 2 repos (main worktrees)', description: 'committed only · 3 uncommitted files NOT included' });
+    expect(subjectRow).toMatchObject({ label: 'Reviewing: 2 repos (main worktrees)', description: 'committed only · 3 uncommitted files NOT included' });
   });
 });
 
 describe('base row', () => {
   it('shows the resolved default branch and is clickable', () => {
     expect(header(wt(true), { kind: 'default' }).baseRow).toMatchObject({
-      label: 'With: origin/master',
+      label: 'Against: origin/master',
       description: 'default branch · click to change',
       command: 'branchCompare.changeBase',
     });
@@ -70,7 +89,7 @@ describe('base row', () => {
 
   it('a committed-only worktree base warns about its excluded edits (singular)', () => {
     const { baseRow } = header(wt(true), { kind: 'worktree', root: '/o', label: 'other', includeUncommitted: false }, { excludedUncommitted: { base: 1 } });
-    expect(baseRow).toMatchObject({ label: 'With: other', description: 'worktree · committed only · 1 uncommitted file NOT included · click to change', warning: true });
+    expect(baseRow).toMatchObject({ label: 'Against: other', description: 'worktree · committed only · 1 uncommitted file NOT included · click to change', warning: true });
   });
 
   it('a worktree base including edits says so', () => {

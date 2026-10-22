@@ -11,6 +11,7 @@ import {
   parseNulList,
   parseNumstatZ,
   parseRefList,
+  parseTagList,
   parseWorktreeList,
 } from '../src/git/parsers';
 
@@ -253,5 +254,14 @@ describe('parseCommitLog', () => {
   it('skips malformed records and returns nothing for empty output', () => {
     expect(parseCommitLog(record('aaa', 'p', 'a', 'not-a-date', 's'))).toEqual([]);
     expect(parseCommitLog('')).toEqual([]);
+  });
+});
+
+describe('parseTagList', () => {
+  it('parses names with dates and tolerates a missing date', () => {
+    expect(parseTagList(['v1\x001700000000', 'v0\x00', ''].join('\n'))).toEqual([
+      { name: 'v1', createdAt: 1_700_000_000_000 },
+      { name: 'v0', createdAt: undefined },
+    ]);
   });
 });
