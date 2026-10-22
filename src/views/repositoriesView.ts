@@ -41,8 +41,9 @@ import {
   type AheadBehindCounts,
 } from '../aheadBehind';
 import { baseLabel, baseMatches } from '../baseStore';
+import { branchLocation, locationText, type BranchLocation } from '../branchLocation';
 import { formatAge, isFetchStale } from '../operations';
-import { displayPath } from '../paths';
+import { displayPath, isOneOf } from '../paths';
 import { FailureTracker, repositoriesStaleMessage } from '../autoRefresh/failureTracker';
 import { stableSignature } from '../autoRefresh/scheduling';
 import { sortBranches, sortWorktrees } from '../treeOrder';
@@ -83,6 +84,8 @@ export interface RepositoriesViewDeps {
   getBase(repo: RepoInfo): BaseSpec | undefined;
   /** Hours after which a repo's last fetch is flagged as stale (setting `branchCompare.staleFetchHours`). */
   staleFetchHours(): number;
+  /** Folders open in this window (workspace folders), to mark "this window" worktrees. */
+  windowFolders(): readonly string[];
   /** A background reload of `repoName` keeps failing (called once per failure episode). */
   onPersistentFailure(repoName: string, reason: string): void;
   readonly logger: Logger;
@@ -96,6 +99,8 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   // Promise caches: concurrent expands of the same repo share one git invocation.
   private repos: Promise<RepoInfo[]> | undefined;
   private readonly details = new Map<string, Promise<RepoDetails>>();
+  // Worktree lists of repos whose details are not loaded (getWorktreesLight); cleared with them.
+  private readonly lightWorktrees = new Map<string, Promise<readonly WorktreeEntry[]>>();
   // commonDir → repo, for refreshes that arrive keyed by common dir (git change events).
   private knownRepos = new Map<string, RepoInfo>();
   // Background reload failures per repo (commonDir). While a repo has an episode, its row shows a
@@ -126,6 +131,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   refresh(): void {
     this.repos = undefined;
     this.details.clear();
+    this.lightWorktrees.clear();
     this.changeEmitter.fire();
   }
 
@@ -137,6 +143,8 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   async refreshRepoIfChanged(commonDir: string): Promise<void> {
     const repo = this.knownRepos.get(commonDir);
     const current = this.details.get(commonDir);
+    // A git change in a repo that was never expanded: its worktree list may be stale too.
+    this.lightWorktrees.delete(commonDir);
     if (repo === undefined || current === undefined) {
       return;
     }
@@ -188,6 +196,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   /** Reload one repo's worktrees, branches and fetch time (after a git action on it). */
   refreshRepo(repo: RepoInfo): void {
     this.details.delete(repo.commonDir);
+    this.lightWorktrees.delete(repo.commonDir);
     this.changeEmitter.fire();
   }
 
@@ -213,6 +222,27 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   /** Branches of one repo (cached); used by the "Compare with…" picker. */
   async getRefs(repo: RepoInfo): Promise<readonly RefEntry[]> {
     return (await this.getDetails(repo)).refs;
+  }
+
+  /**
+   * Usable worktrees of one repo without loading the rest of its details: the cached list when
+   * the repo was already loaded, otherwise one `git worktree list`, cached until that repo next
+   * changes or Refresh. For the status
+   * bar, which must not trigger the branch, fetch-time and ahead/behind queries of every repo in
+   * a large workspace just to name this window's worktree.
+   */
+  async getWorktreesLight(repo: RepoInfo): Promise<readonly WorktreeEntry[]> {
+    if (this.details.has(repo.commonDir)) {
+      return this.getWorktrees(repo);
+    }
+    let pending = this.lightWorktrees.get(repo.commonDir);
+    if (pending === undefined) {
+      pending = this.deps.getGit().then(async (git) => (await git.worktrees(repo.root)).filter((w) => !w.bare && !w.prunable));
+      // A failure is not cached: the next status-bar update retries.
+      pending.catch(() => this.lightWorktrees.delete(repo.commonDir));
+      this.lightWorktrees.set(repo.commonDir, pending);
+    }
+    return pending;
   }
 
   /** Usable (non-bare, non-stale) worktrees of one repo, main first (cached). */
@@ -257,11 +287,12 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
         return worktreeItem(node.repo, node.worktree, node.isMain, this.deps.getBase(node.repo), await this.worktreeDate(node.repo, node.worktree), {
           counts: worktreeAheadBehind(counts, node.worktree),
           baseLabel: counts?.baseLabel,
-        });
+        }, isOneOf(node.worktree.path, this.deps.windowFolders()));
       }
       case 'branch': {
         const counts = await this.aheadBehindCounts(node.repo);
-        return branchItem(node.repo, node.ref, node.checkedOutIn, this.deps.getBase(node.repo), { counts: counts?.byRef.get(node.ref.name), baseLabel: counts?.baseLabel });
+        const location = branchLocation(node.ref, await this.getWorktrees(node.repo), this.deps.windowFolders());
+        return branchItem(node.repo, node.ref, node.checkedOutIn, location, this.deps.getBase(node.repo), { counts: counts?.byRef.get(node.ref.name), baseLabel: counts?.baseLabel });
       }
       case 'message': {
         const item = new vscode.TreeItem(node.text);
@@ -435,31 +466,48 @@ function worktreeItem(
   base: BaseSpec | undefined,
   committedAt: number | undefined,
   position: RowAheadBehind,
+  inWindow: boolean,
 ): vscode.TreeItem {
   const label = worktree.branch ?? `detached @ ${(worktree.head ?? '').slice(0, 7)}`;
   const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
   const isBase = baseMatches(base, { worktreeRoot: worktree.path });
   item.id = `worktree:${worktree.path}`;
-  item.iconPath = new vscode.ThemeIcon(isBase ? 'target' : isMain ? 'home' : 'folder');
+  item.iconPath = new vscode.ThemeIcon(isBase ? 'target' : inWindow ? 'window' : isMain ? 'home' : 'folder');
   const location = isMain ? 'main worktree' : displayPath(repo.root, worktree.path);
   // Age of the latest commit, so the newest-first order is visible.
   const age = committedAt === undefined ? undefined : formatAge(committedAt, Date.now());
-  item.description = [isBase ? 'default Against' : undefined, aheadBehindText(position.counts), location, age].filter(Boolean).join(' · ');
-  item.tooltip = withAheadBehindTooltip(worktree.path, position);
+  item.description = [isBase ? 'default Against' : undefined, inWindow ? 'this window' : undefined, aheadBehindText(position.counts), location, age]
+    .filter(Boolean)
+    .join(' · ');
+  item.tooltip = withAheadBehindTooltip(`${worktree.path}${inWindow ? '\nOpen in this window.' : '\nOpen… opens it in a new window.'}`, position);
   item.contextValue = `comparable.worktree${isMain ? '.main' : ''}${isBase ? '.base' : ''}`;
   return item;
 }
 
-function branchItem(repo: RepoInfo, ref: RefEntry, checkedOutIn: string | undefined, base: BaseSpec | undefined, position: RowAheadBehind): vscode.TreeItem {
+function branchItem(
+  repo: RepoInfo,
+  ref: RefEntry,
+  checkedOutIn: string | undefined,
+  location: BranchLocation,
+  base: BaseSpec | undefined,
+  position: RowAheadBehind,
+): vscode.TreeItem {
   const item = new vscode.TreeItem(ref.name, vscode.TreeItemCollapsibleState.None);
   const isBase = baseMatches(base, { ref: ref.name });
   item.id = `branch:${repo.commonDir}:${ref.kind}:${ref.name}`;
-  item.iconPath = new vscode.ThemeIcon(isBase ? 'target' : ref.kind === 'remote' ? 'cloud' : checkedOutIn !== undefined ? 'check' : 'git-branch');
-  const checkedOut = checkedOutIn !== undefined ? `in ${checkedOutIn === repo.root ? 'main worktree' : path.basename(checkedOutIn)}` : undefined;
-  const detail = checkedOut ?? (ref.upstream !== undefined ? `→ ${ref.upstream}` : undefined);
+  const icon = isBase ? 'target' : location.kind === 'thisWindow' ? 'window' : ref.kind === 'remote' ? 'cloud' : location.kind === 'otherWorktree' ? 'folder' : 'git-branch';
+  item.iconPath = new vscode.ThemeIcon(icon);
+  // Where it lives comes first: it decides what Open does (branchLocation.ts).
+  const where = locationText(location, ref, repo.root);
   const age = ref.committedAt === undefined ? undefined : formatAge(ref.committedAt, Date.now());
-  item.description = [isBase ? 'default Against' : undefined, aheadBehindText(position.counts), detail, age].filter(Boolean).join(' · ');
-  item.tooltip = withAheadBehindTooltip(`${ref.name} @ ${ref.sha}${checkedOutIn !== undefined ? `\nchecked out in ${checkedOutIn}` : ''}`, position);
+  item.description = [isBase ? 'default Against' : undefined, where, aheadBehindText(position.counts), age].filter(Boolean).join(' · ');
+  const opens =
+    location.kind === 'thisWindow'
+      ? 'Checked out in this window.'
+      : location.kind === 'otherWorktree'
+        ? `Checked out in ${location.worktree.path}. Open… opens that worktree in a new window.`
+        : 'Not checked out. Open… lets you switch to it or create a worktree for it.';
+  item.tooltip = withAheadBehindTooltip(`${ref.name} @ ${ref.sha}${ref.upstream !== undefined ? ` → ${ref.upstream}` : ''}\n${opens}`, position);
   item.contextValue = `comparable.branch.${ref.kind}${checkedOutIn !== undefined ? '.checkedOut' : ''}${isBase ? '.base' : ''}`;
   return item;
 }

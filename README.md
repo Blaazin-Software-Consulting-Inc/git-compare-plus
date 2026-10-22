@@ -56,6 +56,28 @@ by one, and remote branches show no counts.
   $(target) marker. **Reset Default Against** goes back to the default branch. The choice is
   saved per workspace.
 - **Right-click a worktree → Open Worktree in New Window**.
+
+**Where each branch lives.** Every branch row says where it's checked out: `in this window`,
+`in worktree .wt/x`, `in main worktree`, or `not checked out`. Remote branches say where their
+local copy is, if there is one. The worktree open in this window is marked `this window`.
+
+**Open…** ($(window) on a branch row, or right-click) does one thing, decided by where the branch
+lives, and tells you before it does it:
+
+| The branch is… | Open… |
+| --- | --- |
+| in this window | Says so. Nothing changes. |
+| in another worktree | Opens that worktree in a new window. Nothing changes on disk. |
+| not checked out | Asks which you want. **Switch this window to it** changes the files in this window's folder; it's refused if that folder has uncommitted changes, and nothing is stashed for you. **Create a worktree for it** makes a separate folder (`<repo>.worktrees/<branch>` next to the repo) and opens it in a new window, leaving your current work untouched. |
+
+Opening a remote branch with no local copy creates the local branch, tracking the remote one.
+
+**Status bar:** `$(list-tree) main worktree` or `$(list-tree) .claude/worktrees/x` shows which
+worktree this window is on. The editor's own branch indicator names the branch, not the folder.
+Click it for **Go to…**: every worktree and branch of this repo, each saying what picking it will
+do ("this window", "opens in a new window", "not checked out: switch to it or create a
+worktree"). The status bar item appears once the extension is in use; it doesn't load the
+extension at startup.
 - **Title bar $(diff-multiple)**: compare every repo's main worktree with its own default branch
   in one go. **$(cloud-download)** fetches every repo.
 
@@ -73,7 +95,8 @@ stay in Cursor's Source Control panel.
 | **Fetch** | repo (or title bar: all repos) | Runs without prompting for credentials; if git needs a password it hasn't stored, the fetch fails quickly and the reason is shown. |
 | **Create Branch From Here…** | repo, worktree, branch | Doesn't switch to the new branch. Optionally creates a worktree for it right after. |
 | **Create Worktree…** | branch not checked out anywhere, or a remote branch | A remote branch gets a local branch with the same name that tracks it. The suggested folder is `<repo>.worktrees/<branch>` next to the repo. |
-| **Switch Main Worktree to This Branch** | branch not checked out anywhere, or a remote branch | Refused while the main worktree has uncommitted changes. Nothing is carried over or stashed for you. |
+| **Open…** | any branch | See the table above: says what it will do before doing it. |
+| **Switch Main Worktree to This Branch** | branch not checked out anywhere, or a remote branch | Refused while the main worktree has uncommitted changes. Nothing is carried over or stashed for you. (Open… does the same for this window's worktree.) |
 | **Remove Worktree(s)…** | one or more linked worktrees | Confirmation names each folder and how many uncommitted files would be **permanently deleted**, plus the total. It also warns when a worktree was created by Claude Code. Branches are kept. |
 | **Delete Branch(es)…** | one or more local branches not checked out anywhere | Confirmation lists how many commits each branch has that aren't in the default branch and would be lost, plus the total. |
 
@@ -279,6 +302,9 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
 | `src/operations.ts`             | Safety checks for those actions (counts of what would be lost), naming rules, fetch age |
 | `src/views/content.ts`          | `branch-compare:` documents (file content at a revision)             |
 | `src/aheadBehind.ts`            | Commits ahead of / behind the default Against for each row (`↑3 ↓12`) |
+| `src/branchLocation.ts`         | Where a branch is checked out, and what Open… offers for it            |
+| `src/goTo.ts`                   | Go to… entries, and which worktree the status bar describes           |
+| `src/views/worktreeStatus.ts`   | The status bar item and the Go to… picker                             |
 | `src/sideChoices.ts`            | The grouped choices for "What do you want to review?" / "Compare it with…" |
 | `src/views/sidePicker.ts`       | Renders those choices as a quick pick; Search commits…; typed refs    |
 | `src/paths.ts`                  | Path comparison (separators, Windows case) and short path display     |

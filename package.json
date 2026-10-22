@@ -106,6 +106,18 @@
         "icon": "$(diff-multiple)"
       },
       {
+        "command": "branchCompare.openBranch",
+        "title": "Open…",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(window)"
+      },
+      {
+        "command": "branchCompare.goTo",
+        "title": "Go to Worktree or Branch…",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(list-tree)"
+      },
+      {
         "command": "branchCompare.compareTwo",
         "title": "Compare…",
         "category": "Branch & Worktree Compare",
@@ -344,6 +356,16 @@
           "group": "2_base@0"
         },
         {
+          "command": "branchCompare.openBranch",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.branch/",
+          "group": "inline@2"
+        },
+        {
+          "command": "branchCompare.openBranch",
+          "when": "view == branchCompare.repositories && viewItem =~ /^comparable\\.branch/",
+          "group": "0_open@1"
+        },
+        {
           "command": "branchCompare.openFile",
           "when": "view == branchCompare.changes && viewItem =~ /^changedFile\\.(?!deleted$)/",
           "group": "inline@1"
@@ -446,6 +468,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "branchCompare.openBranch",
+          "when": "false"
+        },
         {
           "command": "branchCompare.changeSubject",
           "when": "branchCompare.hasComparison"

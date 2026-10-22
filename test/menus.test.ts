@@ -47,6 +47,7 @@ describe('context menu visibility', () => {
     ['branchCompare.clearBase', ['repoWithBase', 'linkedWorktreeBase', 'localBase']],
     ['branchCompare.createBranch', Object.keys(values)],
     ['branchCompare.compare', Object.keys(values)],
+    ['branchCompare.openBranch', ['localBranch', 'localCheckedOut', 'localBase', 'remoteBranch']],
   ] as const)('%s is shown exactly for %j', (command, expected) => {
     const actual = Object.entries(values)
       .filter(([, value]) => shown(command, value))

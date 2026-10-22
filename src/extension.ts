@@ -46,6 +46,7 @@ import type { BaseFetchInfo, ComparisonSetup } from './views/changesHeader';
 import { sideChoices, type SideRole, type SideValue } from './sideChoices';
 import { swapSides } from './swapSides';
 import { pickSide } from './views/sidePicker';
+import { WorktreeStatus } from './views/worktreeStatus';
 import { ChangesProvider, type ChangesLayout, type ChangesNode } from './views/changesView';
 import { commitTitle } from './views/commitText';
 import { CONTENT_SCHEME, RevisionContentProvider, sideToUri } from './views/content';
@@ -78,6 +79,7 @@ export function activate(context: vscode.ExtensionContext): void {
     discoverRepos: async () => (await getServices()).discover(),
     getBase: (repo) => bases.get(repo.commonDir),
     staleFetchHours: () => settings().staleFetchHours,
+    windowFolders: () => windowFolders(),
     onPersistentFailure: (repoName, reason) =>
       void notifyPersistentFailure(`the ${repoName} repository`, reason, channel, [
         { title: 'Refresh', run: () => repositories.refresh() },
@@ -115,16 +117,23 @@ export function activate(context: vscode.ExtensionContext): void {
     bases,
     logger,
     compareWorktree: (repo, worktree) => commands.compareNode({ kind: 'worktree', repo, worktree, isMain: false }, 'stored'),
+    windowFolders: () => windowFolders(),
   });
 
+  const goTo = new WorktreeStatus(repositories, actions, () => windowFolders(), logger);
+
   context.subscriptions.push(
+    goTo,
     channel,
     changesView,
     repositoriesView,
     vscode.window.registerFileDecorationProvider(changes),
     changesView.onDidChangeCheckboxState((event) => void markReviewed(event.items, reviews, changes, logger)),
     vscode.workspace.registerTextDocumentContentProvider(CONTENT_SCHEME, new RevisionContentProvider(getGit, logger)),
-    vscode.workspace.onDidChangeWorkspaceFolders(() => repositories.refresh()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      repositories.refresh();
+      void goTo.update();
+    }),
     register('branchCompare.refresh', () => repositories.refresh()),
     register('branchCompare.compareAll', () => commands.compareAll(), logger),
     register('branchCompare.compare', (node?: RepoTreeNode) => commands.compareNode(node, 'stored'), logger),
@@ -170,6 +179,8 @@ export function activate(context: vscode.ExtensionContext): void {
     // Delete key: keybindings pass no arguments, so read the tree's own selection.
     register('branchCompare.deleteSelected', () => actions.deleteSelection(repositoriesView.selection), logger),
     ...startAutoRefresh(getServices, repositories, repositoriesView, changes, commands, channel, logger),
+    register('branchCompare.openBranch', (node?: RepoTreeNode) => actions.openBranch(node), logger),
+    register('branchCompare.goTo', () => goTo.pick(), logger),
     register('branchCompare.switchBranch', (node?: RepoTreeNode) => actions.switchBranch(node), logger),
   );
 }
@@ -842,7 +853,7 @@ class CompareCommands {
       worktrees,
       refs,
       tags,
-      windowFolders: (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath),
+      windowFolders: windowFolders(),
       defaultBranch,
       storedBase: role === 'against' ? this.bases.get(repo.commonDir) : undefined,
       reviewing,
@@ -913,6 +924,11 @@ async function pickRepository(repos: readonly RepoInfo[]): Promise<RepoInfo | 'a
     ...repos.map((repo) => ({ label: `$(repo) ${repo.name}`, description: repo.root, repo })),
   ];
   return (await vscode.window.showQuickPick(items, { title: 'Compare: in which repository?' }))?.repo;
+}
+
+/** Folders open in this window; "this window" in the views and pickers means one of these. */
+function windowFolders(): string[] {
+  return (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath);
 }
 
 /** Quick pick where Enter on text that matches nothing uses the text as a ref (tag, SHA, …). */

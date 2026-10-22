@@ -20,9 +20,10 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { BaseStore } from './baseStore';
+import { branchLocation, localBranchName, openChoices, switchTargetFor, worktreeName, type OpenChoice } from './branchLocation';
 import type { RepoInfo } from './comparison';
 import type { GitCli } from './git/gitCli';
-import type { WorktreeEntry } from './git/parsers';
+import type { RefEntry, WorktreeEntry } from './git/parsers';
 import type { Logger } from './logger';
 import {
   checkBranchDeletion,
@@ -54,6 +55,8 @@ export interface GitActionsDeps {
   readonly logger: Logger;
   /** Start a comparison for a freshly created worktree (CompareCommands.compareNode). */
   compareWorktree(repo: RepoInfo, worktree: WorktreeEntry): Promise<void>;
+  /** Folders open in this window (workspace folders). */
+  windowFolders(): readonly string[];
 }
 
 /** Implementations of the git action commands. */
@@ -106,7 +109,60 @@ export class GitActions {
   }
 
   /** Create a worktree for a branch (local, or a new local branch tracking a remote one). */
-  async createWorktree(node: RepoTreeNode | undefined): Promise<void> {
+  /**
+   * "Open…" on a branch: the one action whose result depends on where the branch lives, and says
+   * so before doing anything (branchLocation.ts):
+   *   - in this window → a message; nothing changes;
+   *   - in another worktree → that worktree opens in a new window;
+   *   - not checked out → choose: switch this window's worktree (or the main one) to it, or create
+   *     a worktree for it and open that.
+   */
+  async openBranch(node: RepoTreeNode | undefined): Promise<void> {
+    if (node?.kind !== 'branch') {
+      return;
+    }
+    const { repo, ref } = node;
+    const worktrees = await this.deps.repositories.getWorktrees(repo);
+    const location = branchLocation(ref, worktrees, this.deps.windowFolders());
+    this.deps.logger.info('open branch requested', { function: 'openBranch', repo: repo.name, ref: ref.name, location: location.kind });
+    switch (location.kind) {
+      case 'thisWindow':
+        void vscode.window.showInformationMessage(`${localBranchName(ref)} is already checked out in this window.`);
+        return;
+      case 'otherWorktree':
+        await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(location.worktree.path), { forceNewWindow: true });
+        return;
+      case 'notCheckedOut':
+        await this.openUncheckedOutBranch(repo, ref, worktrees, node);
+        return;
+    }
+  }
+
+  private async openUncheckedOutBranch(repo: RepoInfo, ref: RefEntry, worktrees: readonly WorktreeEntry[], node: RepoTreeNode): Promise<void> {
+    const target = switchTargetFor(worktrees, this.deps.windowFolders());
+    if (target === undefined) {
+      return;
+    }
+    const picked = await vscode.window.showQuickPick<vscode.QuickPickItem & { readonly choice: OpenChoice }>(
+      openChoices(ref, target.worktree, target.inWindow, repo.root).map((choice) => ({ label: choice.label, detail: choice.detail, choice })),
+      { title: `Open ${localBranchName(ref)}: it isn't checked out anywhere yet` },
+    );
+    if (picked === undefined) {
+      return;
+    }
+    if (picked.choice.action === 'switch') {
+      await this.switchWorktreeTo(repo, ref, target.worktree);
+    } else {
+      await this.createWorktree(node, { openWhenCreated: true });
+    }
+  }
+
+  /**
+   * Create a worktree for a branch.
+   * @param options.openWhenCreated - open it in a new window straight away (from Open…) instead
+   *   of offering Open / Review afterwards.
+   */
+  async createWorktree(node: RepoTreeNode | undefined, options: { readonly openWhenCreated?: boolean } = {}): Promise<void> {
     if (node?.kind !== 'branch') {
       return;
     }
@@ -150,10 +206,14 @@ export class GitActions {
     this.deps.repositories.refreshRepo(repo);
 
     const created: WorktreeEntry = { path: target, branch: branchName, detached: false, bare: false, prunable: false };
-    const next = await vscode.window.showInformationMessage(`Worktree for ${branchName} created.`, 'Open in New Window', 'Compare With Base');
+    if (options.openWhenCreated === true) {
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(target), { forceNewWindow: true });
+      return;
+    }
+    const next = await vscode.window.showInformationMessage(`Worktree for ${branchName} created.`, 'Open in New Window', 'Review Against Default');
     if (next === 'Open in New Window') {
       await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(target), { forceNewWindow: true });
-    } else if (next === 'Compare With Base') {
+    } else if (next === 'Review Against Default') {
       await this.deps.compareWorktree(repo, created);
     }
   }
@@ -334,12 +394,24 @@ export class GitActions {
     if (node?.kind !== 'branch') {
       return;
     }
-    const { repo, ref } = node;
+    const main = (await this.deps.repositories.getWorktrees(node.repo))[0];
+    if (main !== undefined) {
+      await this.switchWorktreeTo(node.repo, node.ref, main);
+    }
+  }
+
+  /**
+   * Switch one worktree to a branch (an existing local branch, or a new local one tracking a
+   * remote branch). Refused while that worktree has uncommitted tracked changes: switching would
+   * carry them along or fail half-way, and nothing is stashed for the user.
+   */
+  private async switchWorktreeTo(repo: RepoInfo, ref: RefEntry, worktree: WorktreeEntry): Promise<void> {
     const git = await this.deps.getGit();
-    const blockers = await switchBlockers(git, repo.root);
+    const where = worktreeName(worktree, repo.root);
+    const blockers = await switchBlockers(git, worktree.path);
     if (blockers > 0) {
       void vscode.window.showWarningMessage(
-        `The main worktree of ${repo.name} has ${blockers} uncommitted change${blockers === 1 ? '' : 's'}. Commit or stash ${blockers === 1 ? 'it' : 'them'} in Source Control first.`,
+        `The ${where} of ${repo.name} has ${blockers} uncommitted change${blockers === 1 ? '' : 's'}. Commit or stash ${blockers === 1 ? 'it' : 'them'} in Source Control first, or create a worktree for the branch instead.`,
       );
       return;
     }
@@ -352,12 +424,12 @@ export class GitActions {
       target = { branch: ref.name };
     }
     try {
-      await git.switchBranch(repo.root, target);
+      await git.switchBranch(worktree.path, target);
     } catch (error) {
-      this.deps.logger.error('branch switch failed', error, { function: 'switchBranch', repo: repo.name, target });
+      this.deps.logger.error('branch switch failed', error, { function: 'switchWorktreeTo', repo: repo.name, worktree: worktree.path, target });
       throw error;
     }
-    this.deps.logger.info('branch switched', { function: 'switchBranch', repo: repo.name, target });
+    this.deps.logger.info('branch switched', { function: 'switchWorktreeTo', repo: repo.name, worktree: worktree.path, target });
     this.deps.repositories.refreshRepo(repo);
   }
 

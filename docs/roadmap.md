@@ -35,7 +35,7 @@ they're broken.
 - Performance budgets enforced in CI: package size limit, load time limit, and no git commands
   while nothing is shown.
 
-### Phase 1: Clear comparison sides (done, awaiting review)
+### Phase 1: Clear comparison sides (done)
 
 Replaces the "comparison base" idea, which is hard to explain, with two named sides.
 
@@ -51,7 +51,7 @@ Replaces the "comparison base" idea, which is hard to explain, with two named si
   every repo row shows `against origin/main`, with **Change Default Against…** on the repo row and
   **Use as Default Against** on worktrees and branches.
 
-### Phase 2: Clear worktree and branch switching
+### Phase 2: Clear worktree and branch switching (done, awaiting review)
 
 GitLens made the difference between switching branches and opening a worktree hard to see. Here
 the outcome is always stated before anything happens.
