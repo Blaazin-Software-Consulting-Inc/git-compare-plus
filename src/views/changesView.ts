@@ -367,11 +367,7 @@ function fileItem(result: ComparisonResult, file: ChangedFile, reviewed: boolean
         : 'Mark as reviewed',
   };
   // Custom scheme: file-type icon from the name + our status decoration (see module doc).
-  item.resourceUri = vscode.Uri.from({
-    scheme: ITEM_SCHEME,
-    path: `/${file.path}`,
-    query: new URLSearchParams({ status: file.status, repo: result.repo.commonDir }).toString(),
-  });
+  item.resourceUri = changedFileUri(file, result.repo.commonDir);
   const directory = path.posix.dirname(file.path);
   const location = directory === '.' ? '' : directory;
   // Counts first: they are what the eye scans for while picking the next file to review, and a
@@ -382,12 +378,9 @@ function fileItem(result: ComparisonResult, file: ChangedFile, reviewed: boolean
   item.description = [fileLineStatsText(file.lines), where].filter((part) => part.length > 0).join('  ');
   // iconPath wins over the file-type icon that resourceUri would give; resourceUri is still what
   // carries the status decoration (badge letter and label colour).
-  const shape = diffBarShape(file.lines);
-  if (shape !== undefined) {
-    item.iconPath = {
-      light: vscode.Uri.joinPath(extensionUri, diffBarIconPath(shape, 'light')),
-      dark: vscode.Uri.joinPath(extensionUri, diffBarIconPath(shape, 'dark')),
-    };
+  const icon = diffBarIcon(file, extensionUri);
+  if (icon !== undefined) {
+    item.iconPath = icon;
   }
   item.tooltip = fileTooltip(file);
   // `changedFile.<status>`: Open File is hidden for deletions, Open File at Base for additions.
@@ -414,6 +407,22 @@ function fileTooltip(file: ChangedFile): vscode.MarkdownString {
     }
   }
   return tooltip;
+}
+
+/**
+ * Row URI for a changed file in any tree: our private scheme, so the status decoration of this
+ * provider applies (A/M/D/R/U badge and colour) and the editor's own git decorations do not.
+ */
+export function changedFileUri(file: ChangedFile, repoKey: string): vscode.Uri {
+  return vscode.Uri.from({ scheme: ITEM_SCHEME, path: `/${file.path}`, query: new URLSearchParams({ status: file.status, repo: repoKey }).toString() });
+}
+
+/** The green/red diff-bar icon for a file's line counts; undefined keeps the file-type icon. */
+export function diffBarIcon(file: ChangedFile, extensionUri: vscode.Uri): { light: vscode.Uri; dark: vscode.Uri } | undefined {
+  const shape = diffBarShape(file.lines);
+  return shape === undefined
+    ? undefined
+    : { light: vscode.Uri.joinPath(extensionUri, diffBarIconPath(shape, 'light')), dark: vscode.Uri.joinPath(extensionUri, diffBarIconPath(shape, 'dark')) };
 }
 
 function subjectKey(result: ComparisonResult): string {

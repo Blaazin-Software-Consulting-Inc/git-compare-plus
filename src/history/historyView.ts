@@ -12,10 +12,9 @@
  *   Compare with Working Tree the file at that commit vs as it is now (editable)
  *   Compare with Branch…      the file at that commit vs any branch, tag, commit or worktree
  *   Select for Compare, then Compare with Selected; or select two rows → Compare These Two
- *   Review This Commit        the whole commit in the Changes view (header, reviewed marks, …)
- *   Review Changes Since      everything changed in this worktree since that commit, in Changes
- *   Open Commit               every file the commit changed, in one multi-file diff
- *   Copy Commit ID
+ *
+ * plus the whole-commit actions every commit list shares (commits/commitActions.ts): Show Commit
+ * Details, Open Commit, Review This Commit, Review Changes Since, Copy Commit ID, …
  *
  * Cost: history is loaded only while the view is visible (one `git log --follow` per file, on
  * switching files, waiting for the editor to settle), and the ◀ ▶ buttons load a file's history on
@@ -27,7 +26,6 @@ import type { BaseSpec, RepoInfo } from '../comparison';
 import type { GitCli } from '../git/gitCli';
 import type { Logger } from '../logger';
 import { commitDescription, commitTitle, commitTooltip } from '../views/commitText';
-import { openCommitChanges } from '../views/commitDiff';
 import { parseRevisionUri, revisionUri, sideToUri } from '../views/content';
 import { HISTORY_LIMIT, historyDescription, previousVersion, step, type FileVersion, type HistoryEntry, type HistoryPosition, type HistoryState } from './historyModel';
 
@@ -41,16 +39,12 @@ export interface HistoryDeps {
   repoFor(root: string): Promise<RepoInfo | undefined>;
   /** The grouped "Compare it with…" picker. */
   pickAgainst(repo: RepoInfo, title: string): Promise<BaseSpec | undefined>;
-  /** Show one commit as a comparison in Changes (Reviewing = commit, Against = its parent). */
-  reviewCommit(repo: RepoInfo, commitSha: string, commitLabel: string, parentSha: string): Promise<void>;
-  /** Show everything changed in a worktree since a commit, in Changes. */
-  reviewSince(repo: RepoInfo, worktreeRoot: string, commitSha: string, commitLabel: string): Promise<void>;
   readonly logger: Logger;
 }
 
-/** Tree nodes. */
+/** Tree nodes. `root` (the worktree) lets the shared commit actions act on an entry. */
 export type HistoryNode =
-  | { readonly kind: 'entry'; readonly index: number; readonly entry: HistoryEntry }
+  | { readonly kind: 'entry'; readonly index: number; readonly entry: HistoryEntry; readonly root: string }
   | { readonly kind: 'message'; readonly text: string; readonly icon: string };
 
 /** Tree data for the History view. */
@@ -76,7 +70,8 @@ class HistoryProvider implements vscode.TreeDataProvider<HistoryNode> {
     if (this.state.entries.length === 0) {
       return [{ kind: 'message', text: 'No commits have changed this yet.', icon: 'info' }];
     }
-    return this.state.entries.map((entry, index) => ({ kind: 'entry', index, entry }));
+    const { root } = this.state;
+    return this.state.entries.map((entry, index) => ({ kind: 'entry', index, entry, root }));
   }
 
   getTreeItem(node: HistoryNode): vscode.TreeItem {
@@ -363,38 +358,6 @@ export class HistoryController implements vscode.Disposable {
     await this.diff(this.entryUri(state, older.entry), this.entryUri(state, newer.entry), state.path, short(older.entry), short(newer.entry));
   }
 
-  private async reviewCommit(node: HistoryNode | undefined): Promise<void> {
-    const state = this.provider.state;
-    const repo = state === undefined ? undefined : await this.deps.repoFor(state.root);
-    if (node?.kind !== 'entry' || repo === undefined) {
-      return;
-    }
-    const parent = node.entry.commit.parents[0];
-    if (parent === undefined) {
-      void vscode.window.showInformationMessage(`${commitTitle(node.entry.commit)} is the first commit: there is nothing before it to compare with.`);
-      return;
-    }
-    await this.deps.reviewCommit(repo, node.entry.commit.sha, commitTitle(node.entry.commit), parent);
-  }
-
-  private async reviewSince(node: HistoryNode | undefined): Promise<void> {
-    const state = this.provider.state;
-    const repo = state === undefined ? undefined : await this.deps.repoFor(state.root);
-    if (node?.kind !== 'entry' || repo === undefined || state === undefined) {
-      return;
-    }
-    await this.deps.reviewSince(repo, state.root, node.entry.commit.sha, commitTitle(node.entry.commit));
-  }
-
-  private async openCommit(node: HistoryNode | undefined): Promise<void> {
-    const state = this.provider.state;
-    const repo = state === undefined ? undefined : await this.deps.repoFor(state.root);
-    if (node?.kind !== 'entry' || repo === undefined || state === undefined) {
-      return;
-    }
-    await openCommitChanges(await this.deps.getGit(), repo, state.root, node.entry.commit, this.deps.logger);
-  }
-
   // --- show history ------------------------------------------------------------------------
 
   private async showFileHistory(uri: vscode.Uri | undefined): Promise<void> {
@@ -484,14 +447,6 @@ export class HistoryController implements vscode.Disposable {
       guarded('branchCompare.history.selectForCompare', (node?: HistoryNode) => this.selectForCompare(node)),
       guarded('branchCompare.history.compareWithSelected', (node?: HistoryNode) => this.compareWithSelected(node)),
       guarded('branchCompare.history.compareTwo', (node?: HistoryNode, selection?: HistoryNode[]) => this.compareTwo(node, selection)),
-      guarded('branchCompare.history.reviewCommit', (node?: HistoryNode) => this.reviewCommit(node)),
-      guarded('branchCompare.history.reviewSince', (node?: HistoryNode) => this.reviewSince(node)),
-      guarded('branchCompare.history.openCommit', (node?: HistoryNode) => this.openCommit(node)),
-      guarded('branchCompare.history.copyCommitId', async (node?: HistoryNode) => {
-        if (node?.kind === 'entry') {
-          await vscode.env.clipboard.writeText(node.entry.commit.sha);
-        }
-      }),
       guarded('branchCompare.previousRevision', () => this.stepRevision('previous')),
       guarded('branchCompare.nextRevision', () => this.stepRevision('next')),
     ];

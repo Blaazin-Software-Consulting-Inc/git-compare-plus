@@ -88,6 +88,9 @@ export class GitCommandError extends Error {
 
 /** Git operations used by the extension. One instance per window, bound to one git binary. */
 export class GitCli implements ComparisonPort, AheadBehindPort {
+  // Per repo: SHA-1 and SHA-256 repos have different empty-tree IDs.
+  private readonly emptyTreeIds = new Map<string, Promise<string>>();
+
   /**
    * @param gitPath - git binary; the built-in git extension's resolved path so both agree.
    * @param logger - receives DEBUG lines per command (args, duration).
@@ -354,6 +357,29 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
       }
       throw error;
     }
+  }
+
+  /**
+   * Commits matching a search, newest first (see src/commits/commitSearch.ts for the arguments).
+   * @param args - `git log` arguments from `searchArgs`, including `--all` and any pathspec.
+   */
+  async searchCommits(root: string, args: readonly string[], limit: number): Promise<CommitEntry[]> {
+    // The pathspec (if any) comes last in `args`; the options must come before it.
+    const separator = args.indexOf('--');
+    const options = separator < 0 ? args : args.slice(0, separator);
+    const pathspec = separator < 0 ? ['--'] : args.slice(separator);
+    return parseCommitLog(await this.run(root, ['log', '-z', `--format=${COMMIT_LOG_FORMAT}`, `--max-count=${limit}`, ...options, ...pathspec]));
+  }
+
+  /** The empty tree's ID in this repo (differs between SHA-1 and SHA-256 repos); cached. */
+  async emptyTree(root: string): Promise<string> {
+    let pending = this.emptyTreeIds.get(root);
+    if (pending === undefined) {
+      pending = this.run(root, ['hash-object', '-t', 'tree', '--stdin'], { input: '' }).then((id) => id.trim());
+      pending.catch(() => this.emptyTreeIds.delete(root));
+      this.emptyTreeIds.set(root, pending);
+    }
+    return pending;
   }
 
   /** One commit's metadata (`git log -1`), or undefined when `revision` is not a commit. */

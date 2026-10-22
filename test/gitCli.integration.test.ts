@@ -8,6 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { searchArgs } from '../src/commits/commitSearch';
 import { runComparisons, type BaseSpec, type Subject } from '../src/comparison';
 import { GitCli } from '../src/git/gitCli';
 import { recordingLogger } from './helpers';
@@ -300,6 +301,18 @@ describe('GitCli against a real repository', () => {
     // edit.txt has an uncommitted edit in the worktree; keep.txt does not.
     expect(await cli.hasUncommittedChanges(worktreeRoot, 'edit.txt')).toBe(true);
     expect(await cli.hasUncommittedChanges(worktreeRoot, 'keep.txt')).toBe(false);
+  });
+
+  it('searches commits on every branch by message, author, file and changed text', async () => {
+    const cli = new GitCli('git', recordingLogger());
+    const subjects = async (args: string[] | undefined) => (await cli.searchCommits(repoRoot, args ?? [], 50)).map((c) => c.subject);
+    // "feature work" lives only on the feature branch: --all finds it from the main worktree.
+    expect(await subjects(searchArgs({ kind: 'message', text: 'FEATURE' }))).toEqual(['feature work']);
+    expect(await subjects(searchArgs({ kind: 'file', text: 'MAIN-ONLY' }))).toEqual(['main moves on']);
+    expect(await subjects(searchArgs({ kind: 'code', text: 'rename me' }))).toEqual(['base']);
+    expect((await subjects(searchArgs({ kind: 'author', text: 'T' }))).length).toBeGreaterThanOrEqual(3);
+    expect(await subjects(searchArgs({ kind: 'message', text: 'no such text' }))).toEqual([]);
+    expect(await cli.emptyTree(repoRoot)).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it('counts ahead/behind the same way in one walk and per revision', async () => {

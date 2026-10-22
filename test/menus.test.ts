@@ -12,7 +12,7 @@ interface MenuEntry {
   when: string;
 }
 const pkg = JSON.parse(readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
-  contributes: { menus: { 'view/item/context': MenuEntry[] } };
+  contributes: { commands: { command: string }[]; menus: Record<string, MenuEntry[]> & { 'view/item/context': MenuEntry[] } };
 };
 
 /** Every `viewItem =~ /…/` in the command's (non-inline) entry must match. */
@@ -57,7 +57,7 @@ describe('context menu visibility', () => {
 });
 
 describe('commit context menu (Changes view)', () => {
-  it.each(['branchCompare.openCommit', 'branchCompare.compareWithCommit', 'branchCompare.copyCommitId'])('%s is shown on commits only', (command) => {
+  it.each(['branchCompare.openCommit', 'branchCompare.compareWithCommit'])('%s is shown on commits only', (command) => {
     expect(shown(command, 'commit')).toBe(true);
     expect(shown(command, 'changedFile')).toBe(false);
     expect(Object.values(values).some((value) => shown(command, value))).toBe(false);
@@ -107,13 +107,40 @@ describe('history commit menu (History view)', () => {
     'branchCompare.history.selectForCompare',
     'branchCompare.history.compareWithSelected',
     'branchCompare.history.compareTwo',
-    'branchCompare.history.reviewCommit',
-    'branchCompare.history.reviewSince',
-    'branchCompare.history.openCommit',
-    'branchCompare.history.copyCommitId',
   ])('%s is shown on history commits only', (command) => {
     expect(shown(command, 'historyCommit')).toBe(true);
     expect(shown(command, 'commit')).toBe(false);
     expect(Object.values(values).some((value) => shown(command, value))).toBe(false);
+  });
+});
+
+describe('shared commit actions (every commit list)', () => {
+  const lists = ['commit', 'historyCommit', 'commitsCommit'];
+
+  it.each([
+    'branchCompare.commit.reviewCommit',
+    'branchCompare.commit.reviewSince',
+    'branchCompare.commit.reviewAgainst',
+    'branchCompare.commit.select',
+    'branchCompare.commit.compareWithSelected',
+    'branchCompare.commit.compareTwo',
+    'branchCompare.commit.copyId',
+  ])('%s is on commits in Changes, History and Commits, and nowhere else', (command) => {
+    expect(lists.every((value) => shown(command, value))).toBe(true);
+    expect(shown(command, 'changedFile.modified')).toBe(false);
+    expect(shown(command, 'commitsFile')).toBe(false);
+    expect(Object.values(values).some((value) => shown(command, value))).toBe(false);
+  });
+
+  it('Show Commit Details is offered where the row is not already in the Commits view', () => {
+    expect(shown('branchCompare.commit.showDetails', 'commit')).toBe(true);
+    expect(shown('branchCompare.commit.showDetails', 'historyCommit')).toBe(true);
+    expect(shown('branchCompare.commit.showDetails', 'commitsCommit')).toBe(false);
+  });
+
+  it('every menu entry names a contributed command', () => {
+    const contributed = new Set(pkg.contributes.commands.map((c) => c.command));
+    const missing = Object.values(pkg.contributes.menus).flat().filter((entry) => !contributed.has(entry.command)).map((entry) => entry.command);
+    expect(missing).toEqual([]);
   });
 });

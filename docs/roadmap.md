@@ -78,7 +78,7 @@ the outcome is always stated before anything happens.
 - Blame cached per file version; unsaved edits are blamed from the editor's text.
 - Settings to turn each part off.
 
-### Phase 4: File and line history, with commit comparisons (done, awaiting review)
+### Phase 4: File and line history, with commit comparisons (done)
 
 - **File History** view for the current file (follows renames) and **Line History** for a
   selection.
@@ -92,7 +92,7 @@ the outcome is always stated before anything happens.
     Changes with that commit as one side.
 - Back and forward buttons in the editor title to step through a file's past versions.
 
-### Phase 5: Commit search and details
+### Phase 5: Commit search and details (done, awaiting review)
 
 - Search commits by message, author, file, changed text, or ID.
 - Commit details view: message, parents, files, and diffs. The Commits group in Changes and the

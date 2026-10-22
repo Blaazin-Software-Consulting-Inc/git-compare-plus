@@ -51,6 +51,11 @@
           "id": "branchCompare.history",
           "name": "History",
           "visibility": "collapsed"
+        },
+        {
+          "id": "branchCompare.commits",
+          "name": "Commits",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -58,6 +63,10 @@
       {
         "view": "branchCompare.changes",
         "contents": "Nothing compared yet.\n\n[Compare…](command:branchCompare.compareTwo)\n\nPicks what to review, then what to compare it against. Or, in Repositories, click $(git-compare) next to a worktree or branch to review it against its repo's default branch.\n\n[Compare All Repos With Default Branch](command:branchCompare.compareAll)"
+      },
+      {
+        "view": "branchCompare.commits",
+        "contents": "Search commits by message, author, file, changed text or ID, on every branch and tag.\n\n[Search Commits…](command:branchCompare.commits.search)\n\nShow Commit Details on any commit (in Changes or History) opens it here."
       }
     ],
     "commands": [
@@ -179,11 +188,6 @@
       {
         "command": "branchCompare.compareWithCommit",
         "title": "Compare With This Commit (show only what came after)",
-        "category": "Branch & Worktree Compare"
-      },
-      {
-        "command": "branchCompare.copyCommitId",
-        "title": "Copy Commit ID",
         "category": "Branch & Worktree Compare"
       },
       {
@@ -312,26 +316,6 @@
         "category": "Branch & Worktree Compare"
       },
       {
-        "command": "branchCompare.history.reviewCommit",
-        "title": "Review This Commit",
-        "category": "Branch & Worktree Compare"
-      },
-      {
-        "command": "branchCompare.history.reviewSince",
-        "title": "Review Changes Since This Commit",
-        "category": "Branch & Worktree Compare"
-      },
-      {
-        "command": "branchCompare.history.openCommit",
-        "title": "Open Commit (all files)",
-        "category": "Branch & Worktree Compare"
-      },
-      {
-        "command": "branchCompare.history.copyCommitId",
-        "title": "Copy Commit ID",
-        "category": "Branch & Worktree Compare"
-      },
-      {
         "command": "branchCompare.previousRevision",
         "title": "Previous Version of This File",
         "category": "Branch & Worktree Compare",
@@ -342,6 +326,69 @@
         "title": "Next Version of This File",
         "category": "Branch & Worktree Compare",
         "icon": "$(chevron-right)"
+      },
+      {
+        "command": "branchCompare.commits.search",
+        "title": "Search Commits…",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(search)"
+      },
+      {
+        "command": "branchCompare.commits.openFile",
+        "title": "Open Change",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.commits.clear",
+        "title": "Clear",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "branchCompare.commit.showDetails",
+        "title": "Show Commit Details",
+        "category": "Branch & Worktree Compare",
+        "icon": "$(info)"
+      },
+      {
+        "command": "branchCompare.commit.openAll",
+        "title": "Open Commit (all files)",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.commit.reviewCommit",
+        "title": "Review This Commit",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.commit.reviewSince",
+        "title": "Review Changes Since This Commit",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.commit.reviewAgainst",
+        "title": "Review This Commit Against…",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.commit.select",
+        "title": "Select Commit for Compare",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.commit.compareWithSelected",
+        "title": "Review Against Selected Commit",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.commit.compareTwo",
+        "title": "Compare These Two Commits",
+        "category": "Branch & Worktree Compare"
+      },
+      {
+        "command": "branchCompare.commit.copyId",
+        "title": "Copy Commit ID",
+        "category": "Branch & Worktree Compare"
       }
     ],
     "menus": {
@@ -425,6 +472,16 @@
           "command": "branchCompare.history.showFile",
           "when": "view == branchCompare.history",
           "group": "navigation@1"
+        },
+        {
+          "command": "branchCompare.commits.search",
+          "when": "view == branchCompare.commits",
+          "group": "navigation@1"
+        },
+        {
+          "command": "branchCompare.commits.clear",
+          "when": "view == branchCompare.commits",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -477,11 +534,6 @@
           "command": "branchCompare.compareWithCommit",
           "when": "view == branchCompare.changes && viewItem =~ /^commit$/",
           "group": "1_commit@2"
-        },
-        {
-          "command": "branchCompare.copyCommitId",
-          "when": "view == branchCompare.changes && viewItem =~ /^commit$/",
-          "group": "2_copy@1"
         },
         {
           "command": "branchCompare.compare",
@@ -584,24 +636,54 @@
           "group": "2_select@3"
         },
         {
-          "command": "branchCompare.history.reviewCommit",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/",
-          "group": "3_review@1"
+          "command": "branchCompare.commit.showDetails",
+          "when": "viewItem =~ /^(commit|historyCommit)$/",
+          "group": "inline@3"
         },
         {
-          "command": "branchCompare.history.reviewSince",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/",
-          "group": "3_review@2"
+          "command": "branchCompare.commit.showDetails",
+          "when": "viewItem =~ /^(commit|historyCommit)$/",
+          "group": "5_commit@1"
         },
         {
-          "command": "branchCompare.history.openCommit",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/",
-          "group": "3_review@3"
+          "command": "branchCompare.commit.openAll",
+          "when": "viewItem =~ /^(historyCommit|commitsCommit)$/",
+          "group": "5_commit@2"
         },
         {
-          "command": "branchCompare.history.copyCommitId",
-          "when": "view == branchCompare.history && viewItem =~ /^historyCommit$/",
-          "group": "4_copy@1"
+          "command": "branchCompare.commit.reviewCommit",
+          "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/",
+          "group": "6_review@1"
+        },
+        {
+          "command": "branchCompare.commit.reviewSince",
+          "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/",
+          "group": "6_review@2"
+        },
+        {
+          "command": "branchCompare.commit.reviewAgainst",
+          "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/",
+          "group": "6_review@3"
+        },
+        {
+          "command": "branchCompare.commit.select",
+          "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/",
+          "group": "7_select@1"
+        },
+        {
+          "command": "branchCompare.commit.compareWithSelected",
+          "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/ && branchCompare.commitSelected",
+          "group": "7_select@2"
+        },
+        {
+          "command": "branchCompare.commit.compareTwo",
+          "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/ && listMultiSelection",
+          "group": "7_select@3"
+        },
+        {
+          "command": "branchCompare.commit.copyId",
+          "when": "viewItem =~ /^(commit|historyCommit|commitsCommit)$/",
+          "group": "9_copy@1"
         }
       ],
       "scm/title": [
@@ -665,10 +747,6 @@
         },
         {
           "command": "branchCompare.compareWithCommit",
-          "when": "false"
-        },
-        {
-          "command": "branchCompare.copyCommitId",
           "when": "false"
         },
         {
@@ -752,28 +830,56 @@
           "when": "false"
         },
         {
-          "command": "branchCompare.history.reviewCommit",
-          "when": "false"
-        },
-        {
-          "command": "branchCompare.history.reviewSince",
-          "when": "false"
-        },
-        {
-          "command": "branchCompare.history.openCommit",
-          "when": "false"
-        },
-        {
-          "command": "branchCompare.history.copyCommitId",
-          "when": "false"
-        },
-        {
           "command": "branchCompare.previousRevision",
           "when": "branchCompare.activeFileInGit"
         },
         {
           "command": "branchCompare.nextRevision",
           "when": "branchCompare.activeFileInGit"
+        },
+        {
+          "command": "branchCompare.commits.openFile",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.commits.clear",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.commit.showDetails",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.commit.openAll",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.commit.reviewCommit",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.commit.reviewSince",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.commit.reviewAgainst",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.commit.select",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.commit.compareWithSelected",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.commit.compareTwo",
+          "when": "false"
+        },
+        {
+          "command": "branchCompare.commit.copyId",
+          "when": "false"
         }
       ],
       "editor/context": [

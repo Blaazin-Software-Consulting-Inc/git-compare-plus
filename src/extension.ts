@@ -18,7 +18,10 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ChangesAutoRefresh } from './autoRefresh/changesAutoRefresh';
 import { BlameController } from './blame/blameController';
-import { HistoryController } from './history/historyView';
+import { CommitActions } from './commits/commitActions';
+import type { CommitTarget } from './commits/commitTarget';
+import { CommitsView, type CommitsNode } from './commits/commitsView';
+import { HistoryController, type HistoryNode } from './history/historyView';
 import { followGitChanges } from './autoRefresh/gitEvents';
 import { stableSignature } from './autoRefresh/scheduling';
 import { RefType, rankBranchCandidates } from './branchCandidates';
@@ -119,6 +122,8 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     treeDataProvider: changes,
     showCollapseAll: true,
     manageCheckboxStateManually: true,
+    // Compare These Two on two commits of the Commits group.
+    canSelectMany: true,
   });
   changes.attach(changesView);
 
@@ -135,31 +140,41 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 
   const goTo = new WorktreeStatus(repositories, actions, () => windowFolders(), logger);
   const blame = new BlameController(getGit, () => blameSettings(), logger);
+  // The repo a worktree root belongs to (History and Commits rows carry only the root).
+  const repoFor = async (root: string): Promise<RepoInfo | undefined> => {
+    const git = await getGit();
+    const [repos, commonDir] = await Promise.all([repositories.getRepos(), git.commonDir(root)]);
+    return repos.find((repo) => repo.commonDir === commonDir);
+  };
   const history = new HistoryController({
     getGit,
-    repoFor: async (root) => {
-      const git = await getGit();
-      const [repos, commonDir] = await Promise.all([repositories.getRepos(), git.commonDir(root)]);
-      return repos.find((repo) => repo.commonDir === commonDir);
-    },
+    repoFor: (root) => repoFor(root),
     pickAgainst: (repo, title) => commands.pickAgainst(repo, undefined, title),
-    reviewCommit: (repo, sha, label, parent) =>
-      commands.review({
-        requests: [{ repo, subject: { kind: 'ref', ref: sha, label, refKind: 'commit' } }],
-        base: { kind: 'ref', ref: parent, label: `${parent.slice(0, 7)} (parent)`, refKind: 'commit' },
-        // A commit against its own parent: "since branch point" would be the same thing.
-        mode: 'direct',
-      }),
-    reviewSince: (repo, worktreeRoot, sha, label) =>
-      commands.review({
-        requests: [{ repo, subject: { kind: 'worktree', root: worktreeRoot, label: path.basename(worktreeRoot), includeUncommitted: settings().includeUncommitted } }],
-        base: { kind: 'ref', ref: sha, label, refKind: 'commit' },
-        mode: settings().mode,
-      }),
+    logger,
+  });
+
+  const commitsView = new CommitsView({
+    getGit,
+    pickRepository: async () => {
+      const picked = await pickRepository(await repositories.getRepos(), false);
+      return picked === 'all' ? undefined : picked;
+    },
+    extensionUri: context.extensionUri,
+    logger,
+  });
+  const commitActions = new CommitActions({
+    getGit,
+    resolve: (node) => resolveCommitTarget(node, repoFor),
+    showDetails: (target) => commitsView.showCommit(target),
+    pickAgainst: (repo, reviewing, title) => commands.pickAgainst(repo, reviewing, title),
+    review: (setup) => commands.review(setup),
+    settings: () => settings(),
     logger,
   });
 
   context.subscriptions.push(
+    commitsView,
+    commitActions,
     history,
     blame,
     goTo,
@@ -205,7 +220,6 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     }),
     register('branchCompare.openCommit', (node: ChangesNode) => commands.openCommit(node), logger),
     register('branchCompare.compareWithCommit', (node: ChangesNode) => commands.compareWithCommit(node), logger),
-    register('branchCompare.copyCommitId', (node: ChangesNode) => commands.copyCommitId(node), logger),
     register('branchCompare.rerun', () => commands.rerun(), logger),
     register('branchCompare.changeBase', () => commands.changeBase(), logger),
     register('branchCompare.toggleUncommitted', () => commands.toggleUncommitted(), logger),
@@ -656,13 +670,6 @@ class CompareCommands {
     await this.run({ ...state.setup, requests, base: { kind: 'ref', ref: node.commit.sha, refKind: 'commit', label: commitTitle(node.commit) } });
   }
 
-  /** Commit context menu: put the full SHA on the clipboard. */
-  async copyCommitId(node: ChangesNode): Promise<void> {
-    if (node.kind === 'commit') {
-      await vscode.env.clipboard.writeText(node.commit.sha);
-    }
-  }
-
   /** Title bar "Swap Sides": review the base against what was being reviewed. */
   async swapSides(): Promise<void> {
     const state = this.changes.current();
@@ -946,7 +953,7 @@ class CompareCommands {
  * which compares every repo's main worktree against its own default branch.
  * @returns a repo, 'all', or undefined when dismissed or there are no repos.
  */
-async function pickRepository(repos: readonly RepoInfo[]): Promise<RepoInfo | 'all' | undefined> {
+async function pickRepository(repos: readonly RepoInfo[], offerAll = true): Promise<RepoInfo | 'all' | undefined> {
   if (repos.length === 0) {
     void vscode.window.showInformationMessage('No git repositories in this window.');
     return undefined;
@@ -955,10 +962,41 @@ async function pickRepository(repos: readonly RepoInfo[]): Promise<RepoInfo | 'a
     return repos[0];
   }
   const items: (vscode.QuickPickItem & { readonly repo: RepoInfo | 'all' })[] = [
-    { label: '$(repo) All repositories', description: "each main worktree against its own default branch", repo: 'all' },
+    ...(offerAll ? [{ label: '$(repo) All repositories', description: 'each main worktree against its own default branch', repo: 'all' as const }] : []),
     ...repos.map((repo) => ({ label: `$(repo) ${repo.name}`, description: repo.root, repo })),
   ];
-  return (await vscode.window.showQuickPick(items, { title: 'Compare: in which repository?' }))?.repo;
+  return (await vscode.window.showQuickPick(items, { title: offerAll ? 'Compare: in which repository?' : 'In which repository?' }))?.repo;
+}
+
+/**
+ * Any commit row → the commit it shows, for the shared commit actions: a commit in the Changes
+ * view's Commits group, a History entry, or a Commits view row.
+ */
+async function resolveCommitTarget(node: unknown, repoFor: (root: string) => Promise<RepoInfo | undefined>): Promise<CommitTarget | undefined> {
+  if (isChangesCommit(node)) {
+    return { repo: node.result.repo, root: subjectCwd(node.result), commit: node.commit };
+  }
+  if (isCommitsCommit(node)) {
+    return node.target;
+  }
+  if (isHistoryEntry(node)) {
+    const repo = await repoFor(node.root);
+    return repo === undefined ? undefined : { repo, root: node.root, commit: node.entry.commit };
+  }
+  return undefined;
+}
+
+// Command arguments arrive untyped from menus; these guards check which view's row it is.
+function isChangesCommit(node: unknown): node is Extract<ChangesNode, { kind: 'commit' }> {
+  return typeof node === 'object' && node !== null && 'kind' in node && node.kind === 'commit' && 'result' in node && 'commit' in node;
+}
+
+function isCommitsCommit(node: unknown): node is Extract<CommitsNode, { kind: 'commit' }> {
+  return typeof node === 'object' && node !== null && 'kind' in node && node.kind === 'commit' && 'target' in node;
+}
+
+function isHistoryEntry(node: unknown): node is Extract<HistoryNode, { kind: 'entry' }> {
+  return typeof node === 'object' && node !== null && 'kind' in node && node.kind === 'entry' && 'root' in node && 'entry' in node;
 }
 
 /** Folders open in this window; "this window" in the views and pickers means one of these. */

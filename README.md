@@ -88,16 +88,16 @@ stays until you ask for a file's history again.
 
 Every commit row compares in the same ways:
 
-| Action | Shows |
+| Action | Shows (this file only) |
 | --- | --- |
 | click (**Compare with Previous**) | the file just before vs at that commit |
 | **Compare with Working Tree** ($(file) on the row) | the file at that commit vs as it is now, editable |
 | **Compare with Branch, Tag or Commit…** | the file at that commit vs anything in the grouped picker, including another worktree |
 | **Select for Compare**, then **Compare with Selected** | two commits of the file |
 | select two rows, **Compare These Two** | the older on the left, the newer on the right |
-| **Review This Commit** | the whole commit in Changes (Reviewing = the commit, Against = its parent) |
-| **Review Changes Since This Commit** | everything changed in this worktree since then, in Changes |
-| **Open Commit (all files)** | every file the commit changed, in one diff |
+
+Every history row also has the whole-commit actions shared by all commit lists (see **Commits**
+below), such as **Review This Commit** and **Show Commit Details**.
 
 **Stepping through versions:** the $(chevron-left) $(chevron-right) buttons in the editor title
 move through the file's versions one at a time. Each diff shows one version against the one
@@ -107,6 +107,40 @@ or when you first press a button, and is reused until git changes.
 
 Line history uses the committed version's line numbers. If you've edited the file since, the
 lines may have moved.
+
+### Commits: search and details
+
+The **Commits** view (fourth section, collapsed at first) has **Search Commits…** ($(search)).
+Choose what to search by, then type:
+
+| Search by | Finds |
+| --- | --- |
+| Message | commits whose message contains the text (not case-sensitive) |
+| Author | commits by an author whose name or email contains the text |
+| File | commits that changed a file whose path contains the text, e.g. `login` or `src/auth/` |
+| Changed text | commits that added or removed the text in some file, e.g. a function name |
+| Commit ID | one commit by full or short ID, or a tag |
+
+Searches cover every branch and tag, newest first, up to 200 results.
+
+Expand a commit to see its details: author and date, its parent (click it to show that commit),
+and the files it changed, with the same badges, line counts and diff bars as Changes. Click a
+file for its diff. Hover the commit for its full message. **Show Commit Details** ($(info)) on a
+commit in Changes or History opens it here.
+
+**The same actions on every commit**, whether it's in the Commits group in Changes, in History, or
+here:
+
+| Action | Shows, in Changes |
+| --- | --- |
+| **Review This Commit** | Reviewing = the commit, Against = its parent |
+| **Review Changes Since This Commit** | Reviewing = the worktree, Against = the commit |
+| **Review This Commit Against…** | the commit against anything in the grouped picker |
+| **Select Commit for Compare**, then **Review Against Selected Commit** | this commit against the selected one |
+| select two, **Compare These Two Commits** | the newer one against the older one |
+| **Open Commit (all files)**, **Copy Commit ID** | one multi-file diff; the full ID |
+
+History rows also have the file-only comparisons described above.
 
 ### Blame
 
@@ -352,6 +386,10 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
 | `src/operations.ts`             | Safety checks for those actions (counts of what would be lost), naming rules, fetch age |
 | `src/views/content.ts`          | `branch-compare:` documents (file content at a revision)             |
 | `src/aheadBehind.ts`            | Commits ahead of / behind the default Against for each row (`↑3 ↓12`) |
+| `src/commits/commitSearch.ts`   | Search kinds and their `git log` arguments                              |
+| `src/commits/commitsView.ts`    | Commits view: search results and expandable commit details            |
+| `src/commits/commitActions.ts`  | The actions every commit list shares (review, select/compare, copy, …) |
+| `src/commits/commitTarget.ts`   | "A commit in a repo", the shape all commit lists hand to those actions |
 | `src/history/historyModel.ts`   | History: previous version of each entry, ◀ ▶ stepping, wording          |
 | `src/history/historyView.ts`    | History view, its commit comparisons, and the ◀ ▶ editor buttons       |
 | `src/blame/blameController.ts`  | Current-line blame: end-of-line note, hover, status bar, hover actions |
