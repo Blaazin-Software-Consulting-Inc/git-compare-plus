@@ -35,7 +35,9 @@ by one, and remote branches show no counts.
 
 - **$(git-compare) button** (hover over a repo, worktree or branch): compare it with the repo's
   **comparison base**. That's the repo's default branch (`origin/HEAD`, which is `master` or
-  `main` depending on the repo) unless you've set something else.
+  `main` depending on the repo) unless you've set something else. If `origin` is your fork, set
+  `branchCompare.remote` to `upstream`; to pick a different default branch for one repo, use
+  `branchCompare.defaultBranches`.
 - **Right-click → Compare With…**: pick the default branch, another worktree, any branch, or type
   a tag or commit ID.
 - **Right-click a worktree or branch → Set as Comparison Base**: from then on, the compare button
@@ -191,6 +193,8 @@ the edited files, which `git gc` cleans up later.
 | `branchCompare.includeUntracked`   | `true`             | Treat never-added files as uncommitted edits (shown, or counted).   |
 | `branchCompare.compareMode`        | `sinceBranchPoint` | Starting mode: `sinceBranchPoint` or `allDifferences`.               |
 | `branchCompare.staleFetchHours`    | `24`               | After this many hours without a fetch, a repo is flagged as out of date. |
+| `branchCompare.remote`             | `origin`           | Remote whose HEAD branch is the default branch (`upstream` for forks). |
+| `branchCompare.defaultBranches`    | `{}`               | Per-repo default branch, keyed by folder name or main-worktree path: `{ "api": "upstream/develop" }`. |
 | `branchCompare.changesLayout`      | `list`             | Changes view layout: `list` or `tree` (folders). Title bar toggles it. |
 | `branchCompare.autoRefresh`        | `true`             | Re-run the comparison in Changes automatically when its inputs change.   |
 
@@ -202,10 +206,15 @@ Logs are under **View → Output → Git Branch & Worktree Compare**. For more d
 ```bash
 npm install
 npm test          # vitest: unit tests + real-git integration tests (temp repos, worktrees, a local bare "remote")
-npm run build     # tsc → dist/
-npm run package   # build + branch-compare.vsix
+npm run build     # type check (tsc --noEmit) + esbuild bundle → dist/extension.js
+npm run package   # minified build + branch-compare.vsix
+npm run budget    # fail if the bundle or the .vsix is over its size budget
+npm run test:host # downloads VS Code 1.90 into .vscode-test/, activates the extension in it,
+                  # checks every command is registered and activation time is within budget
 npm run generate:icons   # rewrite media/diff-bar/*.svg after changing src/views/diffBar.ts
 ```
+
+CI (`.github/workflows/ci.yml`) runs all of these on macOS, Linux and Windows.
 
 Install or update it in each Cursor profile that should have it, then run **Developer: Reload Window**:
 
@@ -254,6 +263,7 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
 | `src/operations.ts`             | Safety checks for those actions (counts of what would be lost), naming rules, fetch age |
 | `src/views/content.ts`          | `branch-compare:` documents (file content at a revision)             |
 | `src/aheadBehind.ts`            | Commits ahead of / behind the comparison base for each row (`↑3 ↓12`) |
+| `src/defaultBranch.ts`          | Which branch is a repo's default: remote setting, per-repo overrides, fallbacks |
 | `src/treeOrder.ts`              | Order of worktrees and branches: default/main/master first, then newest |
 | `src/branchCandidates.ts`       | Order of branch names when comparing several repos at once          |
 | `src/logger.ts`                 | Structured logging to an output channel                              |
@@ -269,8 +279,14 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
   that are open in the window. Linked worktrees (for example `.claude/worktrees/*`) usually
   aren't, so it can't list or read them. The built-in extension is still used to discover repos
   and to find the git binary.
-- **Default branch**: `origin/HEAD`, falling back to `origin/main`, `origin/master`, `main`, then
-  `master`. To fix a repo where `origin/HEAD` isn't set, run `git remote set-head origin --auto`.
+- **Default branch** (`src/defaultBranch.ts`): a `branchCompare.defaultBranches` override if one
+  exists, otherwise `<remote>/HEAD` (`branchCompare.remote`, default `origin`), falling back to
+  `<remote>/main`, `<remote>/master`, `main`, then `master`. An override naming a branch that
+  doesn't exist is logged and ignored. To fix a repo where `<remote>/HEAD` isn't set, run
+  `git remote set-head <remote> --auto`.
+- **Loaded only when used.** The manifest declares no activation events, so VS Code activates the
+  extension when one of its views or commands is first used, never at editor startup;
+  `npm run test:host` checks this.
 - **Automatic refresh redraws only when something changed.** Cursor reports a repo change after
   every `git status` it runs, including on window focus. Comparing results before redrawing keeps
   the tree still. It also stops the comparison triggering itself: a base snapshot writes git

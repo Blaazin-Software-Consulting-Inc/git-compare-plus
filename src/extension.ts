@@ -38,6 +38,7 @@ import { GitCli } from './git/gitCli';
 import type { ChangedFile, WorktreeEntry } from './git/parsers';
 import { createChannelLogger, type Logger } from './logger';
 import { formatAge, isFetchStale, selectionTargets } from './operations';
+import { parseDefaultBranchSettings } from './defaultBranch';
 import { discoverRepos, getGitApi, type GitApi } from './repoDiscovery';
 import { ReviewStore } from './review/reviewStore';
 import { groupReviewToggles } from './review/reviewToggles';
@@ -57,7 +58,10 @@ export function activate(context: vscode.ExtensionContext): void {
   let services: Promise<{ api: GitApi; git: GitCli; discover: () => Promise<RepoInfo[]> }> | undefined;
   const getServices = () => {
     services ??= getGitApi().then((api) => {
-      const git = new GitCli(api.git.path, logger);
+      const git = new GitCli(api.git.path, logger, () => {
+        const config = vscode.workspace.getConfiguration('branchCompare');
+        return parseDefaultBranchSettings(config.get('remote'), config.get('defaultBranches'));
+      });
       return { api, git, discover: () => discoverRepos(api, git, logger) };
     });
     // A failed start (git disabled) should be retried on the next action, not cached forever.
@@ -134,6 +138,10 @@ export function activate(context: vscode.ExtensionContext): void {
     register('branchCompare.openFile', (node: ChangesNode) => commands.openFileSide(node, 'right'), logger),
     register('branchCompare.openFileAtBase', (node: ChangesNode) => commands.openFileSide(node, 'left'), logger),
     vscode.workspace.onDidChangeConfiguration((event) => {
+      // The default branch drives ordering, ahead/behind and the one-click compare: reload.
+      if (event.affectsConfiguration('branchCompare.remote') || event.affectsConfiguration('branchCompare.defaultBranches')) {
+        repositories.refresh();
+      }
       if (event.affectsConfiguration('branchCompare.changesLayout')) {
         void vscode.commands.executeCommand('setContext', 'branchCompare.changesLayout', settings().changesLayout);
         changes.redraw();
@@ -745,7 +753,7 @@ class CompareCommands {
       refLists.map((refs) => refs.map((r) => ({ type: r.kind === 'local' ? RefType.Head : RefType.RemoteHead, name: r.name }))),
     );
     const items: BasePickItem[] = [
-      { label: "$(star-full) Each repo's default branch", description: 'origin/HEAD per repo', base: { kind: 'default' } },
+      { label: "$(star-full) Each repo's default branch", description: 'resolved per repo', base: { kind: 'default' } },
       { label: 'Branches', kind: vscode.QuickPickItemKind.Separator },
       ...candidates.map((c) => ({
         label: `$(git-branch) ${c.ref}`,

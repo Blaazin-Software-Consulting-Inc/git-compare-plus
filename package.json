@@ -49,7 +49,7 @@
     "viewsWelcome": [
       {
         "view": "branchCompare.changes",
-        "contents": "Nothing compared yet.\n\nIn Repositories, click $(git-compare) next to a worktree or branch to compare it with the default branch (or the comparison base you set). Right-click for Compare With\u2026 and Set as Comparison Base.\n\n[Compare All Repos With Default Branch](command:branchCompare.compareAll)"
+        "contents": "Nothing compared yet.\n\nIn Repositories, click $(git-compare) next to a worktree or branch to compare it with the default branch (or the comparison base you set). Right-click for Compare With… and Set as Comparison Base.\n\n[Compare All Repos With Default Branch](command:branchCompare.compareAll)"
       }
     ],
     "commands": [
@@ -73,7 +73,7 @@
       },
       {
         "command": "branchCompare.compareWith",
-        "title": "Compare With\u2026",
+        "title": "Compare With…",
         "category": "Branch & Worktree Compare"
       },
       {
@@ -157,7 +157,7 @@
       },
       {
         "command": "branchCompare.changeBase",
-        "title": "Change What It Is Compared With\u2026",
+        "title": "Change What It Is Compared With…",
         "category": "Branch & Worktree Compare",
         "icon": "$(git-compare)"
       },
@@ -199,25 +199,25 @@
       },
       {
         "command": "branchCompare.createWorktree",
-        "title": "Create Worktree\u2026",
+        "title": "Create Worktree…",
         "category": "Branch & Worktree Compare",
         "icon": "$(new-folder)"
       },
       {
         "command": "branchCompare.removeWorktree",
-        "title": "Remove Worktree(s)\u2026",
+        "title": "Remove Worktree(s)…",
         "category": "Branch & Worktree Compare",
         "icon": "$(trash)"
       },
       {
         "command": "branchCompare.createBranch",
-        "title": "Create Branch From Here\u2026",
+        "title": "Create Branch From Here…",
         "category": "Branch & Worktree Compare",
         "icon": "$(git-branch-create)"
       },
       {
         "command": "branchCompare.deleteBranch",
-        "title": "Delete Branch(es)\u2026",
+        "title": "Delete Branch(es)…",
         "category": "Branch & Worktree Compare",
         "icon": "$(trash)"
       },
@@ -228,7 +228,7 @@
       },
       {
         "command": "branchCompare.deleteSelected",
-        "title": "Delete Selected Branches / Remove Selected Worktrees\u2026",
+        "title": "Delete Selected Branches / Remove Selected Worktrees…",
         "category": "Branch & Worktree Compare"
       }
     ],
@@ -542,6 +542,19 @@
           "minimum": 1,
           "description": "Flag a repo (and a comparison with one of its remote branches) as possibly out of date when it has not been fetched for this many hours."
         },
+        "branchCompare.remote": {
+          "type": "string",
+          "default": "origin",
+          "description": "Remote whose HEAD branch is each repo's default branch. Use `upstream` if `origin` is your fork."
+        },
+        "branchCompare.defaultBranches": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "markdownDescription": "Default branch for specific repos, overriding `#branchCompare.remote#`. Keys are a repo's folder name or the absolute path of its main worktree; values are branch names, e.g. `{ \"api\": \"upstream/develop\" }`."
+        },
         "branchCompare.changesLayout": {
           "type": "string",
           "enum": [
@@ -572,15 +585,21 @@
     ]
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "generate:icons": "npm run build && node scripts/generate-diff-bar-icons.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "npm run typecheck && node scripts/build.mjs",
+    "build:production": "npm run typecheck && node scripts/build.mjs --production",
+    "generate:icons": "node scripts/generate-diff-bar-icons.mjs",
     "test": "vitest run",
-    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository --skip-license --out branch-compare.vsix"
+    "test:host": "node test/host/runHost.mjs",
+    "budget": "node scripts/check-budget.mjs",
+    "package": "npm run build:production && vsce package --no-dependencies --allow-missing-repository --skip-license --out branch-compare.vsix"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "~1.90.0",
+    "@vscode/test-electron": "2.4.1",
     "@vscode/vsce": "^3.0.0",
+    "esbuild": "0.28.2",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }

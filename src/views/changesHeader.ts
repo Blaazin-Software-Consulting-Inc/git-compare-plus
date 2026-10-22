@@ -105,7 +105,7 @@ function baseRow(setup: ComparisonSetup, results: readonly ComparisonResult[]): 
     case 'default': {
       const label = resolvedLabels.length === 1 ? `With: ${resolvedLabels[0]}` : "With: each repo's default branch";
       const detail = resolvedLabels.length > 1 ? resolvedLabels.join(', ') : 'default branch';
-      return { ...common, label, description: `${detail} · click to change`, tooltip: 'origin/HEAD of each repo.\nClick to compare with another branch or worktree.', warning: false };
+      return { ...common, label, description: `${detail} · click to change`, tooltip: "Each repo's default branch: its remote's HEAD, unless the branchCompare.defaultBranches setting names another.\nClick to compare with another branch or worktree.", warning: false };
     }
     case 'ref':
       return { ...common, label: `With: ${base.ref}`, description: 'click to change', tooltip: 'Click to compare with another branch or worktree.', warning: false };

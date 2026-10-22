@@ -93,15 +93,23 @@ describe('GitCli against a real repository', () => {
   it('hashes files on disk exactly as git hash-object does; skips directories and missing files', async () => {
     const cli = new GitCli('git', recordingLogger());
     writeFileSync(path.join(worktreeRoot, 'hash-me.txt'), 'some content\n');
-    symlinkSync('hash-me.txt', path.join(worktreeRoot, 'link'));
+    // Creating symlinks on Windows needs Developer Mode or admin rights, which CI runners lack.
+    const withSymlink = process.platform !== 'win32';
+    if (withSymlink) {
+      symlinkSync('hash-me.txt', path.join(worktreeRoot, 'link'));
+    }
     mkdirSync(path.join(worktreeRoot, 'a-dir'));
     const hashes = await cli.hashWorkingFiles(worktreeRoot, ['hash-me.txt', 'link', 'a-dir', 'missing.txt']);
-    expect(hashes.get('hash-me.txt')).toBe(git(worktreeRoot, 'hash-object', 'hash-me.txt').trim());
-    // A symlink's blob is its target path, as git stores it.
-    expect(hashes.get('link')).toBe(execFileSync('git', ['hash-object', '--stdin'], { input: 'hash-me.txt', encoding: 'utf8' }).trim());
-    expect([...hashes.keys()].sort()).toEqual(['hash-me.txt', 'link']);
+    // --no-filters: the hash of the bytes on disk, which is what hashWorkingFiles computes (a
+    // Windows runner's core.autocrlf would otherwise change git's answer).
+    expect(hashes.get('hash-me.txt')).toBe(git(worktreeRoot, 'hash-object', '--no-filters', 'hash-me.txt').trim());
+    if (withSymlink) {
+      // A symlink's blob is its target path, as git stores it.
+      expect(hashes.get('link')).toBe(execFileSync('git', ['hash-object', '--stdin'], { input: 'hash-me.txt', encoding: 'utf8' }).trim());
+      rmSync(path.join(worktreeRoot, 'link'));
+    }
+    expect([...hashes.keys()].sort()).toEqual(withSymlink ? ['hash-me.txt', 'link'] : ['hash-me.txt']);
     rmSync(path.join(worktreeRoot, 'hash-me.txt'));
-    rmSync(path.join(worktreeRoot, 'link'));
     rmSync(path.join(worktreeRoot, 'a-dir'), { recursive: true });
   });
 
@@ -158,6 +166,30 @@ describe('GitCli against a real repository', () => {
     expect(mergeBase).toMatch(/^[0-9a-f]{40}$/);
     expect(await cli.show(worktreeRoot, mergeBase ?? '', 'old-name.txt')).toBe('rename me\nline2\nline3\n');
     expect(await cli.mergeBase(repoRoot, 'does-not-exist', 'HEAD')).toBeUndefined();
+  });
+
+  it('uses the configured remote and per-repo overrides for the default branch', async () => {
+    const upstream = path.join(sandbox, 'upstream.git');
+    git(sandbox, 'init', '-q', '--bare', '-b', 'main', upstream);
+    git(repoRoot, 'remote', 'add', 'upstream', upstream);
+    git(repoRoot, 'push', '-q', 'upstream', 'main:develop');
+    git(repoRoot, 'fetch', '-q', 'upstream');
+    git(repoRoot, 'remote', 'set-head', 'upstream', 'develop');
+    try {
+      const withRemote = new GitCli('git', recordingLogger(), () => ({ remote: 'upstream', overrides: {} }));
+      expect(await withRemote.defaultBranch(worktreeRoot)).toBe('upstream/develop');
+
+      // Keyed by the main worktree's folder name, and applied from a linked worktree too.
+      const withOverride = new GitCli('git', recordingLogger(), () => ({ remote: 'upstream', overrides: { repo: 'feature' } }));
+      expect(await withOverride.defaultBranch(worktreeRoot)).toBe('feature');
+
+      const logger = recordingLogger();
+      const withTypo = new GitCli('git', logger, () => ({ remote: 'upstream', overrides: { repo: 'no-such-branch' } }));
+      expect(await withTypo.defaultBranch(repoRoot)).toBe('upstream/develop');
+      expect(logger.calls.warn).toEqual([[expect.stringContaining('override does not exist'), expect.objectContaining({ override: 'no-such-branch' })]]);
+    } finally {
+      git(repoRoot, 'remote', 'remove', 'upstream');
+    }
   });
 
   it('falls back to a local main when origin/HEAD is not set', async () => {

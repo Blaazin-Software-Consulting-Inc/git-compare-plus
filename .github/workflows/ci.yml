@@ -1,0 +1,39 @@
+# CI: unit + real-git integration tests, type check, packaging with the size budget, and the
+# VS Code extension-host smoke test, on all three platforms the extension supports.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      # The integration tests create commits in temporary repos; runners have no git identity.
+      - run: git config --global user.name ci && git config --global user.email ci@example.com
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run package
+      - run: npm run budget
+      # The packaged (minified) bundle is what the smoke test loads.
+      - name: Extension-host smoke test (Linux, virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:host
+      - name: Extension-host smoke test
+        if: runner.os != 'Linux'
+        run: npm run test:host

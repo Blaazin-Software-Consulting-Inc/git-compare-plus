@@ -25,6 +25,7 @@ import * as path from 'node:path';
 import { promisify } from 'node:util';
 import type { AheadBehind, AheadBehindPort } from '../aheadBehind';
 import type { ComparisonPort } from '../comparison';
+import { DEFAULT_BRANCH_SETTINGS, fallbackCandidates, overrideFor, type DefaultBranchSettings } from '../defaultBranch';
 import type { Logger } from '../logger';
 import {
   COMMIT_LOG_FORMAT,
@@ -83,10 +84,13 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
   /**
    * @param gitPath - git binary; the built-in git extension's resolved path so both agree.
    * @param logger - receives DEBUG lines per command (args, duration).
+   * @param defaultBranchSettings - reads `branchCompare.remote` / `branchCompare.defaultBranches`
+   *   on each call, so a settings change applies on the next refresh without a restart.
    */
   constructor(
     private readonly gitPath: string,
     private readonly logger: Logger,
+    private readonly defaultBranchSettings: () => DefaultBranchSettings = () => DEFAULT_BRANCH_SETTINGS,
   ) {}
 
   /** Worktrees of the repository containing `cwd`; the first entry is the main worktree. */
@@ -116,25 +120,57 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
   }
 
   /**
-   * The repo's default branch: `origin/HEAD` when set (normal for clones), otherwise the first of
-   * `origin/main`, `origin/master`, `main`, `master` that exists.
+   * The repo's default branch (see src/defaultBranch.ts): a per-repo override when one is set and
+   * exists; otherwise `<remote>/HEAD` (normal for clones); otherwise the first existing of
+   * `<remote>/main`, `<remote>/master`, `main`, `master`. `<remote>` is `origin` unless the
+   * `branchCompare.remote` setting says otherwise.
    * @returns a ref name, or `undefined` when none of those exist.
    */
   async defaultBranch(cwd: string): Promise<string | undefined> {
+    const settings = this.defaultBranchSettings();
+    const override = await this.configuredOverride(cwd, settings);
+    if (override !== undefined) {
+      return override;
+    }
     try {
-      const ref = (await this.run(cwd, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).trim();
+      const ref = (await this.run(cwd, ['symbolic-ref', '--short', `refs/remotes/${settings.remote}/HEAD`])).trim();
       if (ref.length > 0) {
         return ref;
       }
     } catch (error) {
-      // Expected when the remote was added after cloning or `origin/HEAD` was never fetched;
-      // the fallback below covers it. `git remote set-head origin --auto` fixes it permanently.
-      this.logger.debug('origin/HEAD not set', { function: 'defaultBranch', cwd, reason: errorMessage(error) });
+      // Expected when the remote was added after cloning or `<remote>/HEAD` was never fetched;
+      // the fallback below covers it. `git remote set-head <remote> --auto` fixes it permanently.
+      this.logger.debug('remote HEAD not set', { function: 'defaultBranch', cwd, remote: settings.remote, reason: errorMessage(error) });
     }
     const names = new Set((await this.refs(cwd)).map((r) => r.name));
-    const fallback = ['origin/main', 'origin/master', 'main', 'master'].find((n) => names.has(n));
-    this.logger.warn('default branch resolved by fallback', { function: 'defaultBranch', cwd, fallback });
+    const fallback = fallbackCandidates(settings.remote).find((n) => names.has(n));
+    this.logger.warn('default branch resolved by fallback', { function: 'defaultBranch', cwd, remote: settings.remote, fallback });
     return fallback;
+  }
+
+  // Overrides are keyed by the main worktree, so a linked worktree's cwd is mapped to it first.
+  // Skipped entirely (no git call) when no overrides are configured, which is the common case.
+  private async configuredOverride(cwd: string, settings: DefaultBranchSettings): Promise<string | undefined> {
+    if (Object.keys(settings.overrides).length === 0) {
+      return undefined;
+    }
+    const mainWorktree = (await this.worktrees(cwd))[0]?.path;
+    const override = mainWorktree === undefined ? undefined : overrideFor(settings, mainWorktree);
+    if (override === undefined) {
+      return undefined;
+    }
+    if ((await this.resolveCommit(cwd, override)) === undefined) {
+      // A typo in the setting must not silently compare against the wrong branch: say so, then
+      // fall back to the automatic choice so the views still work.
+      this.logger.warn('default-branch override does not exist; using the automatic default', {
+        function: 'defaultBranch',
+        cwd,
+        mainWorktree,
+        override,
+      });
+      return undefined;
+    }
+    return override;
   }
 
   /**

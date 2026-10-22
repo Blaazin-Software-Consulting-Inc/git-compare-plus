@@ -5,3 +5,7 @@ node_modules/**
 tsconfig.json
 *.vsix
 scripts/**
+.gitignore
+docs/**
+.github/**
+.vscode-test/**
