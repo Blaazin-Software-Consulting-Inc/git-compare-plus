@@ -458,6 +458,11 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
     return parseCommitLog(await this.run(cwd, ['log', '-z', `--format=${COMMIT_LOG_FORMAT}`, `--max-count=${limit}`, `${from}..${to}`, '--']));
   }
 
+  /** The newest `limit` commits reachable from `revision` (`git log <revision>`), newest first. */
+  async log(cwd: string, revision: string, limit: number): Promise<CommitEntry[]> {
+    return parseCommitLog(await this.run(cwd, ['log', '-z', `--format=${COMMIT_LOG_FORMAT}`, `--max-count=${limit}`, revision, '--']));
+  }
+
   /**
    * Resolve a revision to a full commit SHA (`rev-parse --verify <rev>^{commit}`).
    * @returns `undefined` when the revision does not exist or is not a commit.

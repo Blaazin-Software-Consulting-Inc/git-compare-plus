@@ -229,6 +229,11 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     return this.repos;
   }
 
+  /** A repo's default branch (cached with its details); undefined when none was found. */
+  async getDefaultBranch(repo: RepoInfo): Promise<string | undefined> {
+    return (await this.getDetails(repo)).defaultBranch;
+  }
+
   /** Branches of one repo (cached); used by the "Compare with…" picker. */
   async getRefs(repo: RepoInfo): Promise<readonly RefEntry[]> {
     return (await this.getDetails(repo)).refs;

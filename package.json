@@ -82,8 +82,7 @@
         },
         {
           "id": "gitComparePlus.commits",
-          "name": "Commits",
-          "visibility": "collapsed"
+          "name": "Commits"
         }
       ]
     },
@@ -94,7 +93,7 @@
       },
       {
         "view": "gitComparePlus.commits",
-        "contents": "Search commits by message, author, file, changed text or ID, on every branch and tag.\n\n[Search Commits…](command:gitComparePlus.commits.search)\n\nShow Commit Details on any commit (in Changes or History) opens it here."
+        "contents": "Select a worktree or branch in Repositories to see its commits.\n\nOr search commits by message, author, file, changed text or ID, on every branch and tag.\n\n[Search Commits…](command:gitComparePlus.commits.search)\n\nShow Commit Details on any commit (in Changes or History) opens it here."
       }
     ],
     "commands": [
@@ -445,6 +444,18 @@
         "command": "gitComparePlus.stash.openFile",
         "title": "Open Change",
         "category": "Git Compare+"
+      },
+      {
+        "command": "gitComparePlus.commits.showFullHistory",
+        "title": "Show Full History",
+        "category": "Git Compare+",
+        "icon": "$(history)"
+      },
+      {
+        "command": "gitComparePlus.commits.showAheadOnly",
+        "title": "Show Only Commits Not on Default Against",
+        "category": "Git Compare+",
+        "icon": "$(git-compare)"
       }
     ],
     "menus": {
@@ -538,6 +549,16 @@
           "command": "gitComparePlus.commits.clear",
           "when": "view == gitComparePlus.commits",
           "group": "navigation@2"
+        },
+        {
+          "command": "gitComparePlus.commits.showFullHistory",
+          "when": "view == gitComparePlus.commits && gitComparePlus.commitsBranchMode == auto",
+          "group": "navigation@0"
+        },
+        {
+          "command": "gitComparePlus.commits.showAheadOnly",
+          "when": "view == gitComparePlus.commits && gitComparePlus.commitsBranchMode == history",
+          "group": "navigation@0"
         }
       ],
       "view/item/context": [
@@ -986,6 +1007,14 @@
         {
           "command": "gitComparePlus.stash.openFile",
           "when": "false"
+        },
+        {
+          "command": "gitComparePlus.commits.showFullHistory",
+          "when": "gitComparePlus.commitsBranchMode == auto"
+        },
+        {
+          "command": "gitComparePlus.commits.showAheadOnly",
+          "when": "gitComparePlus.commitsBranchMode == history"
         }
       ],
       "editor/context": [

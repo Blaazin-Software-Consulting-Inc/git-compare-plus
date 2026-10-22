@@ -92,7 +92,7 @@ the outcome is always stated before anything happens.
     Changes with that commit as one side.
 - Back and forward buttons in the editor title to step through a file's past versions.
 
-### Phase 5: Commit search and details (done)
+### Phase 5: Commit search and details (done; selecting a branch lists its commits, added later)
 
 - Search commits by message, author, file, changed text, or ID.
 - Commit details view: message, parents, files, and diffs. The Commits group in Changes and the

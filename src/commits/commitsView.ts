@@ -1,6 +1,11 @@
 /**
- * commitsView — the "Commits" view: search results, and the details of any commit opened from
+ * commitsView — the "Commits" view: the commits of the worktree or branch selected in
+ * Repositories (branchCommits.ts), search results, and the details of any commit opened from
  * elsewhere (Show Commit Details on the Commits group in Changes, the History view, or here).
+ *
+ * Selection follows Repositories only while this view is visible; a selection made while it is
+ * hidden is loaded when it is shown. The title bar toggles between "commits not on the default
+ * Against" and the full history.
  *
  * Each commit row expands to its details: author and date, its parent(s) (click one to show its
  * details), and the files it changed, with A/M/D/R badges, line counts and diff bars as in Changes.
@@ -20,6 +25,7 @@ import { commitDescription, commitTitle } from '../views/commitText';
 import { sideToUri } from '../views/content';
 import { changedFileUri, diffBarIcon } from '../views/changesView';
 import { fileLineStatsText } from '../views/lineStatsText';
+import { loadBranchCommits, type BranchCommitsMode, type BranchCommitsRequest } from './branchCommits';
 import { SEARCH_KINDS, SEARCH_LIMIT, searchArgs, searchDescription, type CommitQuery } from './commitSearch';
 import type { CommitTarget } from './commitTarget';
 
@@ -60,6 +66,12 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
   private expandAll = false;
   private readonly details = new Map<string, Promise<CommitDetails>>();
   private readonly subscriptions: vscode.Disposable[];
+  // The selected worktree/branch being listed (or waiting for the view to be shown), and how.
+  private branch: { readonly repo: RepoInfo; readonly request: BranchCommitsRequest } | undefined;
+  private branchPending = false;
+  private branchMode: BranchCommitsMode = 'auto';
+  // Drops a slow load whose selection has since been replaced.
+  private branchGeneration = 0;
 
   constructor(private readonly deps: CommitsViewDeps) {
     this.view = vscode.window.createTreeView('gitComparePlus.commits', { treeDataProvider: this, canSelectMany: true, showCollapseAll: true });
@@ -67,8 +79,71 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
       this.view,
       vscode.commands.registerCommand('gitComparePlus.commits.search', () => this.guard('search', () => this.search())),
       vscode.commands.registerCommand('gitComparePlus.commits.openFile', (node?: CommitsNode) => this.guard('openFile', () => this.openFile(node))),
-      vscode.commands.registerCommand('gitComparePlus.commits.clear', () => this.show([], undefined, undefined, false)),
+      vscode.commands.registerCommand('gitComparePlus.commits.clear', () => {
+        this.branch = undefined;
+        this.show([], undefined, undefined, false);
+      }),
+      vscode.commands.registerCommand('gitComparePlus.commits.showFullHistory', () => this.guard('showFullHistory', () => this.setBranchMode('history'))),
+      vscode.commands.registerCommand('gitComparePlus.commits.showAheadOnly', () => this.guard('showAheadOnly', () => this.setBranchMode('auto'))),
+      this.view.onDidChangeVisibility((event) => {
+        if (event.visible && this.branchPending) {
+          void this.guard('loadBranch', () => this.loadBranch());
+        }
+      }),
     ];
+  }
+
+  /**
+   * A worktree or branch was selected in Repositories: list its commits (see branchCommits.ts).
+   * Runs git only if this view is visible; otherwise remembers the selection for when it is.
+   */
+  async showBranch(repo: RepoInfo, request: BranchCommitsRequest): Promise<void> {
+    this.branch = { repo, request };
+    if (!this.view.visible) {
+      this.branchPending = true;
+      return;
+    }
+    await this.loadBranch();
+  }
+
+  private async setBranchMode(mode: BranchCommitsMode): Promise<void> {
+    this.branchMode = mode;
+    if (this.branch !== undefined) {
+      await this.loadBranch();
+    }
+  }
+
+  private async loadBranch(): Promise<void> {
+    const selected = this.branch;
+    this.branchPending = false;
+    if (selected === undefined) {
+      return;
+    }
+    const generation = ++this.branchGeneration;
+    this.view.description = 'loading…';
+    const startedAt = Date.now();
+    const list = await loadBranchCommits(await this.deps.getGit(), selected.request, this.branchMode);
+    if (generation !== this.branchGeneration) {
+      return;
+    }
+    this.deps.logger.debug('branch commits loaded', {
+      function: 'loadBranch',
+      repo: selected.repo.name,
+      revision: selected.request.revision,
+      mode: this.branchMode,
+      shown: list.shown,
+      count: list.commits.length,
+      durationMs: Date.now() - startedAt,
+    });
+    this.show(
+      list.commits.map((commit) => ({ repo: selected.repo, root: selected.request.cwd, commit })),
+      `Commits: ${selected.request.label}`,
+      list.description,
+      false,
+      list.commits.length === 0 ? 'No commits.' : undefined,
+      true,
+    );
+    await vscode.commands.executeCommand('setContext', 'gitComparePlus.commitsBranchMode', this.branchMode);
   }
 
   /** Show one commit's details, expanded (Show Commit Details from any commit list). */
@@ -122,7 +197,13 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     return found;
   }
 
-  private show(commits: readonly CommitTarget[], title: string | undefined, description: string | undefined, expandAll: boolean, emptyText?: string): void {
+  /** @param isBranchList - true for a selected branch's commits (keeps the mode toggle). */
+  private show(commits: readonly CommitTarget[], title: string | undefined, description: string | undefined, expandAll: boolean, emptyText?: string, isBranchList = false): void {
+    // A search or a commit's details replaces a branch list: the mode toggle no longer applies.
+    if (!isBranchList) {
+      this.branch = undefined;
+      void vscode.commands.executeCommand('setContext', 'gitComparePlus.commitsBranchMode', '');
+    }
     this.commits = commits;
     this.expandAll = expandAll;
     this.emptyText = emptyText;

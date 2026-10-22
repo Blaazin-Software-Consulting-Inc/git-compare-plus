@@ -8,6 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { loadBranchCommits } from '../src/commits/branchCommits';
 import { searchArgs } from '../src/commits/commitSearch';
 import { stashFiles } from '../src/stashes';
 import { runComparisons, type BaseSpec, type Subject } from '../src/comparison';
@@ -360,6 +361,13 @@ describe('GitCli against a real repository', () => {
       rmSync(path.join(repoRoot, 'loose.txt'), { force: true });
       git(repoRoot, 'stash', 'clear');
     }
+  });
+
+  it('logs a branch, and lists what it has that another branch lacks', async () => {
+    const cli = new GitCli('git', recordingLogger());
+    expect((await cli.log(repoRoot, 'feature', 10)).map((c) => c.subject)).toEqual(['feature work', 'base']);
+    const result = await loadBranchCommits(cli, { cwd: repoRoot, revision: 'feature', label: 'feature', against: { label: 'main', commitish: 'main' } }, 'auto');
+    expect(result).toMatchObject({ shown: 'ahead', description: '1 commit not on main' });
   });
 
   it('counts ahead/behind the same way in one walk and per revision', async () => {

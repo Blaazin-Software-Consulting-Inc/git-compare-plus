@@ -43,7 +43,9 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 ### Commits
 
-- **Commits** view: search by message, author, file, changed text or ID, on every branch and tag.
+- **Commits** view: selecting a worktree or branch lists its commits (what it has that the default
+  Against doesn't, or its history); search by message, author, file, changed text or ID, on every
+  branch and tag.
   Commits expand to their author, parents and changed files.
 - The same commit actions everywhere a commit is listed: Review This Commit, Review Changes Since,
   Review Against…, Select / Review Against Selected, Compare These Two, Show Details, Copy ID.
@@ -57,7 +59,7 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 - As fast as git itself on large repositories (benchmarked on git/git: a two-release comparison
   in about 150 ms, blame of a 6,800-line file in about 420 ms); the benchmark runs in CI.
-- About 77 KB to download, no runtime dependencies, no account, no telemetry; activates after the
+- About 79 KB to download, no runtime dependencies, no account, no telemetry; activates after the
   editor has started, never during startup. Size and activation budgets are checked in CI on
   macOS, Linux and Windows.
 

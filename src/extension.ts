@@ -18,6 +18,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ChangesAutoRefresh } from './autoRefresh/changesAutoRefresh';
 import { BlameController } from './blame/blameController';
+import { aheadBehindBase } from './aheadBehind';
+import type { BranchCommitsRequest } from './commits/branchCommits';
 import { CommitActions } from './commits/commitActions';
 import type { CommitTarget } from './commits/commitTarget';
 import { CommitsView, type CommitsNode } from './commits/commitsView';
@@ -173,7 +175,29 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     logger,
   });
 
+  // Selecting a worktree or branch lists its commits in the Commits view (once arrowing stops).
+  let selectionTimer: ReturnType<typeof setTimeout> | undefined;
+  const followSelection = repositoriesView.onDidChangeSelection((event) => {
+    if (selectionTimer !== undefined) {
+      clearTimeout(selectionTimer);
+    }
+    const [only, ...rest] = event.selection;
+    // A multi-selection is for deleting several items, not for browsing one.
+    if (only === undefined || rest.length > 0) {
+      return;
+    }
+    selectionTimer = setTimeout(() => {
+      void branchCommitsRequest(only, repositories, bases).then(
+        (request) => (request === undefined ? undefined : commitsView.showBranch(request.repo, request.request)),
+        (error: unknown) =>
+          logger.warn('branch commits unavailable', { function: 'followSelection', reason: error instanceof Error ? error.message : String(error) }),
+      );
+    }, SELECTION_SETTLE_MS);
+  });
+
   context.subscriptions.push(
+    followSelection,
+    new vscode.Disposable(() => clearTimeout(selectionTimer)),
     commitsView,
     commitActions,
     history,
@@ -255,6 +279,9 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 // Commits offered by "Search commits…": enough to reach back a few weeks on a busy repo while
 // keeping the list instant to filter. Older commits can still be pasted by ID.
 const RECENT_COMMITS_LIMIT = 500;
+
+// Arrowing through Repositories should load only the row you stop on.
+const SELECTION_SETTLE_MS = 250;
 
 // Re-render relative ages ("3 h ago", fetch staleness) once a minute. Redraw only, no git commands.
 const AGE_REFRESH_MS = 60_000;
@@ -972,6 +999,32 @@ async function pickRepository(repos: readonly RepoInfo[], offerAll = true): Prom
     ...repos.map((repo) => ({ label: `$(repo) ${repo.name}`, description: repo.root, repo })),
   ];
   return (await vscode.window.showQuickPick(items, { title: offerAll ? 'Compare: in which repository?' : 'In which repository?' }))?.repo;
+}
+
+/**
+ * What the Commits view lists for a selected Repositories row: a worktree's HEAD (git runs in that
+ * worktree), a branch, or a repo (its main worktree), against the repo's default Against.
+ * @returns undefined for rows that are not a worktree, branch or repo.
+ */
+async function branchCommitsRequest(
+  node: RepoTreeNode,
+  repositories: RepositoriesProvider,
+  bases: BaseStore,
+): Promise<{ repo: RepoInfo; request: BranchCommitsRequest } | undefined> {
+  if (node.kind !== 'repo' && node.kind !== 'worktree' && node.kind !== 'branch') {
+    return undefined;
+  }
+  const { repo } = node;
+  const [worktrees, defaultBranch] = await Promise.all([repositories.getWorktrees(repo), repositories.getDefaultBranch(repo)]);
+  const against = aheadBehindBase(bases.get(repo.commonDir), defaultBranch, worktrees);
+  if (node.kind === 'branch') {
+    return { repo, request: { cwd: repo.root, revision: node.ref.name, label: node.ref.name, against } };
+  }
+  const worktree = node.kind === 'worktree' ? node.worktree : worktrees[0];
+  if (worktree === undefined) {
+    return undefined;
+  }
+  return { repo, request: { cwd: worktree.path, revision: worktree.head ?? 'HEAD', label: worktreeLabel(worktree), against } };
 }
 
 /**

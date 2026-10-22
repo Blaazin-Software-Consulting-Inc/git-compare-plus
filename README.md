@@ -41,8 +41,8 @@ Repositories and click its compare button.
 ### Comparing
 
 Click the **Git Compare+** icon in the activity bar (the left-hand icon strip).
-The sidebar has four sections: **Repositories**, **Changes**, **History** and **Commits** (the
-last two start collapsed).
+The sidebar has four sections: **Repositories**, **Changes**, **Commits** and **History** (the
+last starts collapsed).
 
 **Every comparison has two named sides,** used the same way everywhere:
 
@@ -185,6 +185,7 @@ by one, and remote branches show no counts.
   target marker. **Reset Default Against** goes back to the default branch. The choice is
   saved per workspace.
 - **Right-click a worktree → Open Worktree in New Window**.
+- **Select** a worktree or branch to list its commits in the **Commits** view (see below).
 - **Title bar**: **Compare All Repos** compares every repo's main worktree with its own default
   branch in one go; **Fetch All Repos** fetches every repo.
 
@@ -282,10 +283,21 @@ or when you first press a button, and is reused until git changes.
 Line history uses the committed version's line numbers. If you've edited the file since, the
 lines may have moved.
 
-### Commits: search and details
+### Commits: a branch's commits, search and details
 
-The **Commits** view (fourth section, collapsed at first) has **Search Commits…** (search button in its title bar).
-Choose what to search by, then type:
+**Select a worktree or branch in Repositories** and the **Commits** view lists its commits:
+
+- what it has that the repo's default Against doesn't, e.g. `3 commits not on origin/main` (the
+  same commits its ↑3 counts), so you see what you'd be reviewing;
+- or, when there's nothing like that (selecting `main` itself, say), its recent history, saying
+  why: `history · 200+ commits · nothing that origin/main doesn't have`.
+
+The history button in the view's title bar switches to the full history, and back. Selecting a repo
+row lists its main worktree. Nothing is switched or opened; it only lists. Selecting several rows
+(to delete them) leaves the list alone.
+
+The view also has **Search Commits…** (search button in its title bar). Choose what to search by,
+then type:
 
 | Search by | Finds |
 | --- | --- |
@@ -413,7 +425,7 @@ waits about 1.5 s after you stop typing before it refreshes.
 
 | | Git Compare+ 1.0.0 |
 | --- | --- |
-| Download size | about 77 KB (one 138 KB bundle, no runtime dependencies) |
+| Download size | about 79 KB (one 141 KB bundle, no runtime dependencies) |
 | Startup cost | none: it activates after the editor has finished starting; `activate()` itself takes a few milliseconds |
 | Network | only when you click Fetch; no telemetry, no account |
 | Background work | git runs only for what's on screen: a shown comparison, an open History view, the current line's blame |

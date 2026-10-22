@@ -61,6 +61,7 @@ In Cursor, add `--profile <name>` to install into a profile other than Default.
 | `src/operations.ts`             | Safety checks for those actions (counts of what would be lost), naming rules, fetch age |
 | `src/views/content.ts`          | `git-compare-plus:` documents (file content at a revision)           |
 | `src/aheadBehind.ts`            | Commits ahead of / behind the default Against for each row (`↑3 ↓12`) |
+| `src/commits/branchCommits.ts`  | What the Commits view lists for a selected worktree or branch          |
 | `src/commits/commitSearch.ts`   | Search kinds and their `git log` arguments                              |
 | `src/commits/commitsView.ts`    | Commits view: search results and expandable commit details            |
 | `src/commits/commitActions.ts`  | The actions every commit list shares (review, select/compare, copy, …) |
