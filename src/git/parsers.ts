@@ -323,22 +323,64 @@ export function parseLeftRightCount(stdout: string): { ahead: number; behind: nu
 
 /** Parse `git log -z --format=COMMIT_LOG_FORMAT`; malformed records are skipped. */
 export function parseCommitLog(stdout: string): CommitEntry[] {
-  const commits: CommitEntry[] = [];
-  for (const record of stdout.split('\0')) {
-    const [sha, parents, author, authoredUnix, ...subjectParts] = record.replace(/^\n/, '').split('\x1f');
-    const authoredAt = unixSecondsToMs(authoredUnix);
-    if (!sha || parents === undefined || author === undefined || authoredAt === undefined) {
+  return stdout.split('\0').flatMap((record) => {
+    const commit = commitFromRecord(record);
+    return commit === undefined ? [] : [commit];
+  });
+}
+
+// One COMMIT_LOG_FORMAT record; git may put a newline before it after `-z` name output.
+function commitFromRecord(record: string): CommitEntry | undefined {
+  const [sha, parents, author, authoredUnix, ...subjectParts] = record.replace(/^\n/, '').split('\x1f');
+  const authoredAt = unixSecondsToMs(authoredUnix);
+  if (!sha || parents === undefined || author === undefined || authoredAt === undefined) {
+    return undefined;
+  }
+  return { sha, parents: parents.split(' ').filter((p) => p.length > 0), author, authoredAt, subject: subjectParts.join('\x1f') };
+}
+
+/** One commit of a file's history, with the file's path in that commit. */
+export interface FileHistoryEntry {
+  readonly commit: CommitEntry;
+  /** The file's path in this commit (follows renames: older entries may have an older name). */
+  readonly path: string;
+  /** How the commit changed the file: A(dded), M(odified), D(eleted), R(enamed), … (first letter). */
+  readonly status: string;
+}
+
+/**
+ * Parse `git log --follow -z --format=COMMIT_LOG_FORMAT --name-status -M -- <path>`.
+ *
+ * Token stream (NUL-separated): a commit record, then `[\n]<status>` and one path, or two paths
+ * (old, new) for a rename/copy. A commit that reports no change to the file (some merges) is
+ * followed directly by the next record; it keeps the path of the newer entry.
+ */
+export function parseFileHistory(stdout: string, currentPath: string): FileHistoryEntry[] {
+  const tokens = stdout.split('\0');
+  const entries: FileHistoryEntry[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const commit = commitFromRecord(tokens[i++] ?? '');
+    if (commit === undefined) {
       continue;
     }
-    commits.push({
-      sha,
-      parents: parents.split(' ').filter((p) => p.length > 0),
-      author,
-      authoredAt,
-      subject: subjectParts.join('\x1f'),
-    });
+    const knownPath = entries[entries.length - 1]?.path ?? currentPath;
+    const statusToken = (tokens[i] ?? '').replace(/^\n/, '');
+    // No name-status for this commit: the next token is already the next commit.
+    if (statusToken === '' || statusToken.includes('\x1f')) {
+      entries.push({ commit, path: knownPath, status: 'M' });
+      continue;
+    }
+    i++;
+    const status = statusToken[0] ?? 'M';
+    if (status === 'R' || status === 'C') {
+      i++; // old path: the next (older) entry reports it as its own path
+      entries.push({ commit, path: tokens[i++] ?? knownPath, status });
+    } else {
+      entries.push({ commit, path: tokens[i++] ?? knownPath, status });
+    }
   }
-  return commits;
+  return entries;
 }
 
 /**

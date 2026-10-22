@@ -36,6 +36,7 @@ import {
   parseAheadBehindRefs,
   parseBlameIncremental,
   parseCommitLog,
+  parseFileHistory,
   parseCommitDates,
   parseNameStatusZ,
   parseNulList,
@@ -48,6 +49,7 @@ import {
   type BlameLine,
   type ChangedFile,
   type CommitEntry,
+  type FileHistoryEntry,
   type LineStats,
   type RefEntry,
   type TagEntry,
@@ -317,6 +319,38 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
       if (error instanceof GitCommandError && error.details.exitCode === 128) {
         // Expected: a new file not in HEAD yet ("no such path"), or a file git ignores.
         return undefined;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Commits that changed a file, newest first, following renames (`git log --follow`), each with
+   * the file's path in that commit.
+   * @param relativePath - repo-relative path of the file today.
+   */
+  async fileHistory(root: string, relativePath: string, limit: number): Promise<FileHistoryEntry[]> {
+    const output = await this.run(root, ['log', '--follow', '-z', `--format=${COMMIT_LOG_FORMAT}`, '--name-status', '-M', `--max-count=${limit}`, '--', relativePath]);
+    return parseFileHistory(output, relativePath);
+  }
+
+  /**
+   * Commits that changed lines `startLine`..`endLine` (1-based, inclusive) of a file, newest first
+   * (`git log -L`). Line numbers refer to the committed (HEAD) version of the file.
+   */
+  async lineHistory(root: string, relativePath: string, startLine: number, endLine: number, limit: number): Promise<CommitEntry[]> {
+    // -L only supports -p or -s output; -s keeps it to commit records.
+    return parseCommitLog(await this.run(root, ['log', `-L${startLine},${endLine}:${relativePath}`, '-s', '-z', `--format=${COMMIT_LOG_FORMAT}`, `--max-count=${limit}`]));
+  }
+
+  /** True when the file on disk differs from HEAD (staged or unstaged), `git diff --quiet HEAD`. */
+  async hasUncommittedChanges(root: string, relativePath: string): Promise<boolean> {
+    try {
+      await this.run(root, ['diff', '--quiet', 'HEAD', '--', relativePath]);
+      return false;
+    } catch (error) {
+      if (error instanceof GitCommandError && error.details.exitCode === 1) {
+        return true;
       }
       throw error;
     }

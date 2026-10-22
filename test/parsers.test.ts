@@ -5,6 +5,7 @@ import {
   parseAheadBehindRefs,
   parseBlameIncremental,
   parseCommitLog,
+  parseFileHistory,
   parseCommitDates,
   parseNameStatusZ,
   parseLeftRightCount,
@@ -313,5 +314,35 @@ describe('parseBlameIncremental', () => {
 
   it('returns nothing for empty output', () => {
     expect(parseBlameIncremental('')).toEqual([]);
+  });
+});
+
+describe('parseFileHistory', () => {
+  const record = (sha: string, subject: string) => [sha, 'p', 'A', '1700000000', subject].join('\x1f');
+
+  it('reads each commit with its status and the path in that commit, following a rename', () => {
+    const out = [
+      record('c3', 'edit'), '\nM', 'src/new.ts',
+      record('c2', 'rename'), '\nR100', 'src/old.ts', 'src/new.ts',
+      record('c1', 'add'), '\nA', 'src/old.ts',
+      '',
+    ].join('\0');
+    expect(parseFileHistory(out, 'src/new.ts').map((e) => [e.commit.sha, e.status, e.path])).toEqual([
+      ['c3', 'M', 'src/new.ts'],
+      ['c2', 'R', 'src/new.ts'],
+      ['c1', 'A', 'src/old.ts'],
+    ]);
+  });
+
+  it('keeps the newer path for a commit that reports no change (some merges)', () => {
+    const out = [record('m', 'merge'), record('c1', 'edit'), '\nM', 'a.ts', ''].join('\0');
+    expect(parseFileHistory(out, 'a.ts').map((e) => [e.commit.sha, e.path])).toEqual([
+      ['m', 'a.ts'],
+      ['c1', 'a.ts'],
+    ]);
+  });
+
+  it('returns nothing for empty output', () => {
+    expect(parseFileHistory('', 'a.ts')).toEqual([]);
   });
 });

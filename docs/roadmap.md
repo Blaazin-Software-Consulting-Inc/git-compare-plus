@@ -68,7 +68,7 @@ the outcome is always stated before anything happens.
 - **Status bar item** showing this window's worktree and branch. Clicking it opens "Go to…",
   listing worktrees and branches with the outcome of picking each one.
 
-### Phase 3: Blame (done, awaiting review)
+### Phase 3: Blame (done)
 
 - Blame for the current line at the end of the line (author, age, message), shown when the
   cursor settles.
@@ -78,7 +78,7 @@ the outcome is always stated before anything happens.
 - Blame cached per file version; unsaved edits are blamed from the editor's text.
 - Settings to turn each part off.
 
-### Phase 4: File and line history, with commit comparisons
+### Phase 4: File and line history, with commit comparisons (done, awaiting review)
 
 - **File History** view for the current file (follows renames) and **Line History** for a
   selection.

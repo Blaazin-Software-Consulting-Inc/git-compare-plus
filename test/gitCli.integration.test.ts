@@ -285,6 +285,23 @@ describe('GitCli against a real repository', () => {
     expect(await cli.commit(worktreeRoot, 'no-such-commit')).toBeUndefined();
   });
 
+  it('lists file history across a rename, line history, and whether a file has uncommitted changes', async () => {
+    const cli = new GitCli('git', recordingLogger());
+    const history = await cli.fileHistory(worktreeRoot, 'new-name.txt', 10);
+    expect(history.map((e) => [e.commit.subject, e.status, e.path])).toEqual([
+      ['feature work', 'R', 'new-name.txt'],
+      ['base', 'A', 'old-name.txt'],
+    ]);
+    expect(await cli.fileHistory(worktreeRoot, 'new-name.txt', 1)).toHaveLength(1);
+
+    const lines = await cli.lineHistory(repoRoot, 'edit.txt', 1, 1, 10);
+    expect(lines.map((c) => c.subject)).toEqual(['base']);
+
+    // edit.txt has an uncommitted edit in the worktree; keep.txt does not.
+    expect(await cli.hasUncommittedChanges(worktreeRoot, 'edit.txt')).toBe(true);
+    expect(await cli.hasUncommittedChanges(worktreeRoot, 'keep.txt')).toBe(false);
+  });
+
   it('counts ahead/behind the same way in one walk and per revision', async () => {
     const cli = new GitCli('git', recordingLogger());
     const mainSha = (await cli.resolveCommit(repoRoot, 'main')) ?? '';

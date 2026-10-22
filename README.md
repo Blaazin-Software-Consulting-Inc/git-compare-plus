@@ -78,6 +78,36 @@ Click it for **Go to…**: every worktree and branch of this repo, each saying w
 do ("this window", "opens in a new window", "not checked out: switch to it or create a
 worktree").
 
+### History
+
+The **History** view (third section of the sidebar, collapsed at first) shows the commits that
+changed the file in the active editor, newest first. It follows renames and switches as you
+switch files. Right-click in an editor or the Explorer for **Show File History**, or select lines
+and choose **Show Line History** to see only the commits that changed those lines. Line history
+stays until you ask for a file's history again.
+
+Every commit row compares in the same ways:
+
+| Action | Shows |
+| --- | --- |
+| click (**Compare with Previous**) | the file just before vs at that commit |
+| **Compare with Working Tree** ($(file) on the row) | the file at that commit vs as it is now, editable |
+| **Compare with Branch, Tag or Commit…** | the file at that commit vs anything in the grouped picker, including another worktree |
+| **Select for Compare**, then **Compare with Selected** | two commits of the file |
+| select two rows, **Compare These Two** | the older on the left, the newer on the right |
+| **Review This Commit** | the whole commit in Changes (Reviewing = the commit, Against = its parent) |
+| **Review Changes Since This Commit** | everything changed in this worktree since then, in Changes |
+| **Open Commit (all files)** | every file the commit changed, in one diff |
+
+**Stepping through versions:** the $(chevron-left) $(chevron-right) buttons in the editor title
+move through the file's versions one at a time. Each diff shows one version against the one
+before it, so the left side is always "just before" the right. From a file with uncommitted
+changes, the first step back shows those changes. The history loads only while the view is open,
+or when you first press a button, and is reused until git changes.
+
+Line history uses the committed version's line numbers. If you've edited the file since, the
+lines may have moved.
+
 ### Blame
 
 Put the cursor on a line and, after a moment, the end of that line shows who last changed it and
@@ -322,6 +352,8 @@ VS Code's own command (VS Code profiles are separate from Cursor's):
 | `src/operations.ts`             | Safety checks for those actions (counts of what would be lost), naming rules, fetch age |
 | `src/views/content.ts`          | `branch-compare:` documents (file content at a revision)             |
 | `src/aheadBehind.ts`            | Commits ahead of / behind the default Against for each row (`↑3 ↓12`) |
+| `src/history/historyModel.ts`   | History: previous version of each entry, ◀ ▶ stepping, wording          |
+| `src/history/historyView.ts`    | History view, its commit comparisons, and the ◀ ▶ editor buttons       |
 | `src/blame/blameController.ts`  | Current-line blame: end-of-line note, hover, status bar, hover actions |
 | `src/blame/blameText.ts`        | Wording of the blame note, status text and hover (escaped, with command links) |
 | `src/views/commitDiff.ts`       | Open one commit's changes in a multi-file diff (Commits group, blame)  |

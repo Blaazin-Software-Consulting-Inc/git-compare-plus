@@ -18,6 +18,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ChangesAutoRefresh } from './autoRefresh/changesAutoRefresh';
 import { BlameController } from './blame/blameController';
+import { HistoryController } from './history/historyView';
 import { followGitChanges } from './autoRefresh/gitEvents';
 import { stableSignature } from './autoRefresh/scheduling';
 import { RefType, rankBranchCandidates } from './branchCandidates';
@@ -134,8 +135,32 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 
   const goTo = new WorktreeStatus(repositories, actions, () => windowFolders(), logger);
   const blame = new BlameController(getGit, () => blameSettings(), logger);
+  const history = new HistoryController({
+    getGit,
+    repoFor: async (root) => {
+      const git = await getGit();
+      const [repos, commonDir] = await Promise.all([repositories.getRepos(), git.commonDir(root)]);
+      return repos.find((repo) => repo.commonDir === commonDir);
+    },
+    pickAgainst: (repo, title) => commands.pickAgainst(repo, undefined, title),
+    reviewCommit: (repo, sha, label, parent) =>
+      commands.review({
+        requests: [{ repo, subject: { kind: 'ref', ref: sha, label, refKind: 'commit' } }],
+        base: { kind: 'ref', ref: parent, label: `${parent.slice(0, 7)} (parent)`, refKind: 'commit' },
+        // A commit against its own parent: "since branch point" would be the same thing.
+        mode: 'direct',
+      }),
+    reviewSince: (repo, worktreeRoot, sha, label) =>
+      commands.review({
+        requests: [{ repo, subject: { kind: 'worktree', root: worktreeRoot, label: path.basename(worktreeRoot), includeUncommitted: settings().includeUncommitted } }],
+        base: { kind: 'ref', ref: sha, label, refKind: 'commit' },
+        mode: settings().mode,
+      }),
+    logger,
+  });
 
   context.subscriptions.push(
+    history,
     blame,
     goTo,
     channel,
@@ -195,7 +220,11 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     register('branchCompare.deleteBranch', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => actions.deleteBranches(selectionTargets(node, selection)), logger),
     // Delete key: keybindings pass no arguments, so read the tree's own selection.
     register('branchCompare.deleteSelected', () => actions.deleteSelection(repositoriesView.selection), logger),
-    ...startAutoRefresh(getServices, repositories, repositoriesView, changes, commands, blame, channel, logger),
+    ...startAutoRefresh(getServices, repositories, repositoriesView, changes, commands, () => {
+      // A commit or checkout changes what every line blames to and every file's history.
+      blame.gitChanged();
+      history.gitChanged();
+    }, channel, logger),
     register('branchCompare.openBranch', (node?: RepoTreeNode) => actions.openBranch(node), logger),
     register('branchCompare.goTo', () => goTo.pick(), logger),
     register('branchCompare.switchBranch', (node?: RepoTreeNode) => actions.switchBranch(node), logger),
@@ -224,7 +253,7 @@ function startAutoRefresh(
   repositoriesView: vscode.TreeView<RepoTreeNode>,
   changes: ChangesProvider,
   commands: CompareCommands,
-  blame: BlameController,
+  onGitChange: () => void,
   channel: vscode.LogOutputChannel,
   logger: Logger,
 ): vscode.Disposable[] {
@@ -257,8 +286,7 @@ function startAutoRefresh(
           repoChanged: (commonDir) => {
             void repositories.refreshRepoIfChanged(commonDir);
             changesRefresh.repoChanged(commonDir);
-            // A commit or checkout changes what every line blames to.
-            blame.gitChanged();
+            onGitChange();
           },
           reposChanged: () => repositories.refresh(),
         },
@@ -766,6 +794,12 @@ class CompareCommands {
     await this.run({ ...state.setup, mode: state.setup.mode === 'merge-base' ? 'direct' : 'merge-base' });
   }
 
+  /** Show a comparison in Changes (from other views: History's Review This Commit, …). */
+  async review(setup: ComparisonSetup): Promise<void> {
+    this.logger.info('comparison requested', { function: 'review', requests: setup.requests.map((r) => ({ repo: r.repo.name, subject: r.subject })), base: setup.base });
+    await this.run(setup);
+  }
+
   private async run(setup: ComparisonSetup): Promise<void> {
     const results = await this.compute(setup);
     this.changes.show({ setup, results, baseFetch: await this.baseFetchInfo(results) });
@@ -809,7 +843,7 @@ class CompareCommands {
    *   repo's default Against.
    * @returns the Against side, or undefined if the picker was dismissed.
    */
-  private async pickAgainst(repo: RepoInfo, reviewing: Subject | undefined, title: string): Promise<BaseSpec | undefined> {
+  async pickAgainst(repo: RepoInfo, reviewing: Subject | undefined, title: string): Promise<BaseSpec | undefined> {
     const value = await this.pickSideValue(repo, 'against', reviewing, title);
     switch (value?.kind) {
       case undefined:

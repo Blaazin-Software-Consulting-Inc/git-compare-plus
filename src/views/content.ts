@@ -6,7 +6,8 @@
  *   path  = `/<repo-relative path>`; keeps the real file name so the tab title and language
  *           detection (syntax highlighting) work.
  *   query = `cwd=<worktree or repo root>&rev=<revision>`; `rev` empty means an empty document,
- *           used for the missing side of an addition or deletion.
+ *           used for the missing side of an addition or deletion. Optional `file=<path today>`
+ *           lets the History view's ◀ ▶ buttons find the file's history from a renamed version.
  *
  * Why not the git extension's `git:` URIs: they only resolve for repositories the git extension has
  * open, and linked worktrees usually are not (see git/gitCli.ts).
@@ -30,12 +31,31 @@ export function sideToUri(side: SideSource, fallbackPath: string): vscode.Uri {
   }
 }
 
-function revisionUri(cwd: string, revision: string, repoRelativePath: string): vscode.Uri {
+/**
+ * URI of `<revision>:<path>` in the repo at `cwd`.
+ * @param pathToday - the file's path today, when it differs (renames); used by history stepping.
+ */
+export function revisionUri(cwd: string, revision: string, repoRelativePath: string, pathToday?: string): vscode.Uri {
   return vscode.Uri.from({
     scheme: CONTENT_SCHEME,
     path: `/${repoRelativePath}`,
-    query: new URLSearchParams({ cwd, rev: revision }).toString(),
+    query: new URLSearchParams({ cwd, rev: revision, ...(pathToday !== undefined ? { file: pathToday } : {}) }).toString(),
   });
+}
+
+/** The parts of a `branch-compare:` URI; undefined for other schemes or an empty side. */
+export function parseRevisionUri(uri: vscode.Uri): { cwd: string; revision: string; path: string; pathToday: string } | undefined {
+  if (uri.scheme !== CONTENT_SCHEME) {
+    return undefined;
+  }
+  const params = new URLSearchParams(uri.query);
+  const cwd = params.get('cwd') ?? '';
+  const revision = params.get('rev') ?? '';
+  if (cwd === '' || revision === '') {
+    return undefined;
+  }
+  const filePath = uri.path.slice(1);
+  return { cwd, revision, path: filePath, pathToday: params.get('file') ?? filePath };
 }
 
 /** Serves `branch-compare:` documents by running `git show <rev>:<path>`. */

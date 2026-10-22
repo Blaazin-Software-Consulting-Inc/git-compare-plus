@@ -98,3 +98,22 @@ describe('header row buttons (Changes view)', () => {
     expect(actual.sort()).toEqual(['repo', 'repoWithBase']);
   });
 });
+
+describe('history commit menu (History view)', () => {
+  it.each([
+    'branchCompare.history.openDiff',
+    'branchCompare.history.compareWithWorkingTree',
+    'branchCompare.history.compareWithBranch',
+    'branchCompare.history.selectForCompare',
+    'branchCompare.history.compareWithSelected',
+    'branchCompare.history.compareTwo',
+    'branchCompare.history.reviewCommit',
+    'branchCompare.history.reviewSince',
+    'branchCompare.history.openCommit',
+    'branchCompare.history.copyCommitId',
+  ])('%s is shown on history commits only', (command) => {
+    expect(shown(command, 'historyCommit')).toBe(true);
+    expect(shown(command, 'commit')).toBe(false);
+    expect(Object.values(values).some((value) => shown(command, value))).toBe(false);
+  });
+});
