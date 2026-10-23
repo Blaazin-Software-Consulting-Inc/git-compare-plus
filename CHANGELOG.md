@@ -21,7 +21,10 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 ### Worktrees and branches
 
-- Every branch says where it lives: in this window, in another worktree, or not checked out.
+- Each branch is listed once: checked-out branches are their worktree's row under Worktrees,
+  and **Other Branches** lists the rest; remote branches say where their local copy is.
+- Each sidebar section's header summarises what it shows (e.g. `feature-x ↔ origin/main · 14
+  files` on Changes).
 - **Open…** on a branch says what it will do before doing it: open its worktree in a new window,
   or, for a branch not checked out, switch this window to it (refused with uncommitted changes;
   never stashes) or create a worktree for it.

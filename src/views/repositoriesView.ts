@@ -4,7 +4,8 @@
  * Shape:
  *   repo                       (the main worktree; description = checked-out branch)
  *   ├─ Worktrees (n)           every worktree incl. the main one; e.g. `.claude/worktrees/*`
- *   ├─ Branches (n)            local branches
+ *   ├─ Other Branches (n)      local branches checked out in no worktree (each branch is listed
+ *   │                          once: a checked-out branch is its worktree's row)
  *   ├─ Remote Branches (n)     remote-tracking branches (collapsed)
  *   └─ Stashes (n)             the repo's stashes (collapsed); each expands to its files
  *
@@ -42,7 +43,7 @@ import {
   type AheadBehindCounts,
 } from '../aheadBehind';
 import { baseLabel, baseMatches } from '../baseStore';
-import { branchLocation, locationText, type BranchLocation } from '../branchLocation';
+import { branchLocation, branchesNotCheckedOut, locationText, type BranchLocation } from '../branchLocation';
 import { formatAge, isFetchStale } from '../operations';
 import { displayPath, isOneOf } from '../paths';
 import { FailureTracker, repositoriesStaleMessage } from '../autoRefresh/failureTracker';
@@ -224,6 +225,10 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   getRepos(): Promise<RepoInfo[]> {
     this.repos ??= this.deps.discoverRepos().then((repos) => {
       this.knownRepos = new Map(repos.map((r) => [r.commonDir, r]));
+      // The section header names what is in it: the repo, or how many.
+      if (this.view !== undefined) {
+        this.view.description = repos.length === 1 ? repos[0]?.name : repos.length > 1 ? `${repos.length} repositories` : undefined;
+      }
       return repos;
     });
     return this.repos;
@@ -426,12 +431,10 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
         .filter((w) => !w.bare && !w.prunable)
         .map((worktree) => ({ kind: 'worktree', repo, worktree, isMain: worktree.path === mainPath }));
     }
-    const kind = group === 'branches' ? 'local' : 'remote';
-    // Branch → worktree path holding it; the main worktree's branch is included.
-    const holders = new Map(details.worktrees.filter((w) => w.branch !== undefined).map((w) => [w.branch, w.path]));
-    return details.refs
-      .filter((r) => r.kind === kind)
-      .map((ref) => ({ kind: 'branch', repo, ref, checkedOutIn: ref.kind === 'local' ? holders.get(ref.name) : undefined }));
+    if (group === 'branches') {
+      return branchesNotCheckedOut(details.refs, details.worktrees).map((ref) => ({ kind: 'branch', repo, ref }));
+    }
+    return details.refs.filter((r) => r.kind === 'remote').map((ref) => ({ kind: 'branch', repo, ref }));
   }
 
   // Stashes are cosmetic next to worktrees and branches: a failure leaves the group empty (WARN)
@@ -492,14 +495,16 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
 
   private async groupItem(repo: RepoInfo, group: GroupKind): Promise<vscode.TreeItem> {
     const details = await this.getDetails(repo);
-    const labels: Record<GroupKind, string> = { worktrees: 'Worktrees', branches: 'Branches', remotes: 'Remote Branches', stashes: 'Stashes' };
+    const labels: Record<GroupKind, string> = { worktrees: 'Worktrees', branches: 'Other Branches', remotes: 'Remote Branches', stashes: 'Stashes' };
     const icons: Record<GroupKind, string> = { worktrees: 'list-tree', branches: 'git-branch', remotes: 'cloud', stashes: 'archive' };
     const count =
       group === 'worktrees'
         ? details.worktrees.filter((w) => !w.bare && !w.prunable).length
         : group === 'stashes'
           ? details.stashes.length
-          : details.refs.filter((r) => r.kind === (group === 'branches' ? 'local' : 'remote')).length;
+          : group === 'branches'
+            ? branchesNotCheckedOut(details.refs, details.worktrees).length
+            : details.refs.filter((r) => r.kind === 'remote').length;
     // Remote branches and stashes are long or rarely needed; keep them out of the way.
     const state = group === 'remotes' || group === 'stashes' ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded;
     const item = new vscode.TreeItem(labels[group], count > 0 ? state : vscode.TreeItemCollapsibleState.None);

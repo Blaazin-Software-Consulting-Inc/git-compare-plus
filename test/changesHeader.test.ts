@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BaseSpec, ComparisonResult, Subject } from '../src/comparison';
-import { describeHeader, type ComparisonSetup } from '../src/views/changesHeader';
+import { describeHeader, sidesSummary, type ComparisonSetup } from '../src/views/changesHeader';
 import { repo } from './helpers';
 
 const wt = (includeUncommitted: boolean): Subject => ({ kind: 'worktree', root: '/wt', label: 'feature-x', includeUncommitted });
@@ -121,5 +121,30 @@ describe('stale fetch warning on the base row', () => {
   it('leaves the row alone when the fetch is recent or the base is local', () => {
     const plain = describeHeader(setup, [result(wt(true))])[1];
     expect(describeHeader(setup, [result(wt(true))], { age: '5 min ago', stale: false })[1]).toEqual(plain);
+  });
+});
+
+describe('sidesSummary (Changes section header)', () => {
+  it('names both sides of a one-repo comparison', () => {
+    const setup: ComparisonSetup = { requests: [{ repo: repo('svc'), subject: wt(true) }], base: { kind: 'default' }, mode: 'merge-base' };
+    expect(sidesSummary(setup, [result(wt(true))])).toBe('feature-x ↔ origin/master');
+  });
+
+  it('uses a ref or worktree base by its label', () => {
+    const setup = (base: BaseSpec): ComparisonSetup => ({ requests: [{ repo: repo('svc'), subject: wt(true) }], base, mode: 'direct' });
+    expect(sidesSummary(setup({ kind: 'ref', ref: 'abc123', label: 'abc123 Fix', refKind: 'commit' }), [])).toBe('feature-x ↔ abc123 Fix');
+    expect(sidesSummary(setup({ kind: 'worktree', root: '/w', label: 'main', includeUncommitted: true }), [])).toBe('feature-x ↔ main');
+  });
+
+  it('counts repos, and says "default branches" when they differ', () => {
+    const setup: ComparisonSetup = {
+      requests: [
+        { repo: repo('a'), subject: wt(true) },
+        { repo: repo('b'), subject: wt(true) },
+      ],
+      base: { kind: 'default' },
+      mode: 'merge-base',
+    };
+    expect(sidesSummary(setup, [result(wt(true)), result(wt(true), { baseLabel: 'origin/main' })])).toBe('2 repos ↔ default branches');
   });
 });

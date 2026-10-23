@@ -30,7 +30,7 @@ import * as vscode from 'vscode';
 import { totalLineStats, type ComparisonResult } from '../comparison';
 import type { ChangedFile, CommitEntry, FileStatus } from '../git/parsers';
 import { commitCountText, commitDescription, commitTitle, commitTooltip } from './commitText';
-import { describeHeader, type BaseFetchInfo, type ComparisonSetup, type HeaderRow } from './changesHeader';
+import { describeHeader, sidesSummary, type BaseFetchInfo, type ComparisonSetup, type HeaderRow } from './changesHeader';
 import { diffBarIconPath, diffBarShape, lineStatsHoverHtml } from './diffBar';
 import { buildFileTree, filesUnder, type FolderNode } from './fileTree';
 import { fileLineStatsText, lineStatsTooltip, totalLineStatsText } from './lineStatsText';
@@ -210,6 +210,8 @@ export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vs
       this.state === undefined
         ? undefined
         : [
+            // The sides first: with several sections stacked, the header says what this one shows.
+            sidesSummary(this.state.setup, results),
             `${fileCount} file${fileCount === 1 ? '' : 's'}`,
             ...(reviewedCount > 0 ? [`${reviewedCount} reviewed`] : []),
             ...(fileCount > 0 ? [totalLineStatsText(totals)] : []),

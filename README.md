@@ -150,13 +150,16 @@ the edited files, which `git gc` cleans up later.
 ### Repositories, worktrees and branches
 
 **Repositories**: every repo in the window. In a single-repo window it opens already expanded.
+Each section's header says what it holds: Repositories names the repo (or how many), Changes names
+both sides (`feature-x ↔ origin/main · 14 files · +320 −45`), and Commits and History name the
+branch or file they're showing.
 
 ```
 orders-service     feature/login-retry
 ├─ Worktrees  2
 │  ├─ feature/login-retry   main worktree
 │  └─ claude/feature-x             .claude/worktrees/feature-x
-├─ Branches  14
+├─ Other Branches  12
 ├─ Remote Branches  31
 └─ Stashes  2
 ```
@@ -193,9 +196,10 @@ Each repo row shows when it was last fetched (`fetched 3 h ago`). If that's long
 `staleFetchHours`, the row turns yellow, because comparisons with `origin/…` may be missing newer
 commits.
 
-**Where each branch lives.** Every branch row says where it's checked out: `in this window`,
-`in worktree .wt/x`, `in main worktree`, or `not checked out`. Remote branches say where their
-local copy is, if there is one. The worktree open in this window is marked `this window`.
+**Each branch is listed once.** A branch checked out in a worktree is that worktree's row under
+**Worktrees** (the worktree open in this window is marked `this window`). **Other Branches** lists
+the local branches checked out nowhere. Remote branches say where their local copy is, if there is
+one (`local copy in this window`, `local copy in worktree .wt/x`).
 
 **Open…** (a button on each branch row, or right-click) does one thing, decided by where the branch
 lives, and tells you before it does it:

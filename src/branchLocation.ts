@@ -28,6 +28,15 @@ export type BranchLocation =
   | { readonly kind: 'otherWorktree'; readonly worktree: WorktreeEntry }
   | { readonly kind: 'notCheckedOut' };
 
+/**
+ * Local branches checked out in no worktree, in their given order: the "Other Branches" group.
+ * A branch that is checked out is shown once, under Worktrees (its worktree row), not again here.
+ */
+export function branchesNotCheckedOut(refs: readonly RefEntry[], worktrees: readonly WorktreeEntry[]): RefEntry[] {
+  const checkedOut = new Set(worktrees.flatMap((w) => (w.branch === undefined ? [] : [w.branch])));
+  return refs.filter((ref) => ref.kind === 'local' && !checkedOut.has(ref.name));
+}
+
 /** The local branch name a ref stands for: itself, or `x` for remote `origin/x`. */
 export function localBranchName(ref: RefEntry): string {
   return ref.kind === 'remote' ? localNameForRemote(ref.name) : ref.name;
@@ -47,9 +56,9 @@ export function branchLocation(ref: RefEntry, worktrees: readonly WorktreeEntry[
 }
 
 /**
- * Row text for a location: `in this window`, `in main worktree`, `in worktree .wt/x`, or
- * `not checked out`. Remote branches say "local copy" so the row does not suggest the remote
- * branch itself is checked out.
+ * Row text for a location: `in this window`, `in main worktree`, `in worktree .wt/x`, or nothing
+ * when it is not checked out (the "Other Branches" group already says so). Remote branches say
+ * "local copy" so the row does not suggest the remote branch itself is checked out.
  */
 export function locationText(location: BranchLocation, ref: RefEntry, repoRoot: string): string {
   const prefix = ref.kind === 'remote' ? 'local copy ' : '';
@@ -59,8 +68,9 @@ export function locationText(location: BranchLocation, ref: RefEntry, repoRoot: 
     case 'otherWorktree':
       return `${prefix}in ${worktreeName(location.worktree, repoRoot)}`;
     case 'notCheckedOut':
-      // A remote branch without a local copy is the normal case; saying so on every row is noise.
-      return ref.kind === 'remote' ? '' : 'not checked out';
+      // Every row of "Other Branches" is not checked out, and a remote branch without a local copy
+      // is the normal case: saying so on every row is noise.
+      return '';
   }
 }
 

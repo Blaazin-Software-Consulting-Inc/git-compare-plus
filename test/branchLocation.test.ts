@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { branchLocation, localBranchName, locationText, openChoices, switchTargetFor, worktreeName } from '../src/branchLocation';
+import { branchLocation, branchesNotCheckedOut, localBranchName, locationText, openChoices, switchTargetFor, worktreeName } from '../src/branchLocation';
 import type { RefEntry, WorktreeEntry } from '../src/git/parsers';
 
 const wt = (p: string, branch?: string): WorktreeEntry => ({ path: p, branch, head: 'abc', detached: branch === undefined, bare: false, prunable: false });
@@ -21,12 +21,23 @@ describe('branchLocation', () => {
   });
 });
 
+describe('branchesNotCheckedOut', () => {
+  it('lists each local branch once: checked-out ones belong to Worktrees, remotes elsewhere', () => {
+    const refs = [ref('main'), ref('feature-x'), ref('old'), ref('origin/old', 'remote'), ref('newer')];
+    expect(branchesNotCheckedOut(refs, worktrees).map((r) => r.name)).toEqual(['old', 'newer']);
+  });
+
+  it('keeps every local branch when no worktree has a branch (all detached)', () => {
+    expect(branchesNotCheckedOut([ref('a'), ref('b')], [wt('/r'), wt('/r/.wt/d')]).map((r) => r.name)).toEqual(['a', 'b']);
+  });
+});
+
 describe('locationText', () => {
-  it('says where a local branch lives, or that it is not checked out', () => {
+  it('says where a local branch lives, and nothing when it is not checked out (its group says so)', () => {
     expect(locationText({ kind: 'thisWindow', worktree: worktrees[0] as WorktreeEntry }, ref('main'), ROOT)).toBe('in this window');
     expect(locationText({ kind: 'otherWorktree', worktree: worktrees[1] as WorktreeEntry }, ref('feature-x'), ROOT)).toBe('in worktree .wt/x');
     expect(locationText({ kind: 'otherWorktree', worktree: worktrees[0] as WorktreeEntry }, ref('main'), ROOT)).toBe('in main worktree');
-    expect(locationText({ kind: 'notCheckedOut' }, ref('old'), ROOT)).toBe('not checked out');
+    expect(locationText({ kind: 'notCheckedOut' }, ref('old'), ROOT)).toBe('');
   });
 
   it('says "local copy" for remote branches and stays quiet when there is none', () => {

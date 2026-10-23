@@ -45,6 +45,25 @@ export interface BaseFetchInfo {
   readonly stale: boolean;
 }
 
+/**
+ * One-line summary of the two sides for the view's title bar, so the section header itself says
+ * what Changes is showing: `feature-x ↔ origin/main`, or `3 repos ↔ default branches`.
+ */
+export function sidesSummary(setup: ComparisonSetup, results: readonly ComparisonResult[]): string {
+  const single = setup.requests.length === 1 ? setup.requests[0] : undefined;
+  const reviewing = single !== undefined ? single.subject.label : `${setup.requests.length} repos`;
+  const labels = [...new Set(results.map((r) => r.baseLabel).filter((l): l is string => l !== undefined))];
+  const against =
+    setup.base.kind === 'default'
+      ? labels.length === 1 && labels[0] !== undefined
+        ? labels[0]
+        : 'default branches'
+      : setup.base.kind === 'ref'
+        ? (setup.base.label ?? setup.base.ref)
+        : setup.base.label;
+  return `${reviewing} ↔ ${against}`;
+}
+
 /** Build the header rows for a comparison and its results. */
 export function describeHeader(setup: ComparisonSetup, results: readonly ComparisonResult[], baseFetch?: BaseFetchInfo): HeaderRow[] {
   return [subjectRow(setup, results), withFetchWarning(baseRow(setup, results), baseFetch), modeRow(setup)];
