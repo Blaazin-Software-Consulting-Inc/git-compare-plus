@@ -41,8 +41,8 @@ Repositories and click its compare button.
 ### Comparing
 
 Click the **Git Compare+** icon in the activity bar (the left-hand icon strip).
-The sidebar has four sections: **Repositories**, **Changes**, **Commits** and **History** (the
-last starts collapsed).
+The sidebar has three sections: **Repositories**, **Changes** and **Commits**. A fourth,
+**History**, appears when you ask for a file's history and closes with its ✕.
 
 **Every comparison has two named sides,** used the same way everywhere:
 
@@ -259,11 +259,14 @@ checkout was one of those worktrees is deleted in the same pass.
 
 ### History
 
-The **History** view (third section of the sidebar, collapsed at first) shows the commits that
-changed the file in the active editor, newest first. It follows renames and switches as you
-switch files. Right-click in an editor or the Explorer for **Show File History**, or select lines
-and choose **Show Line History** to see only the commits that changed those lines. Line history
-stays until you ask for a file's history again.
+Right-click a file for **Show File History**: in the editor, the Explorer, a changed file in
+Changes, a file of a commit in Commits, or a file in a stash. The **History** section appears with
+each commit that changed that file, newest first, following renames (older rows show the old name).
+Select lines and right-click → **Show Line History** to list only the commits that changed those
+lines.
+
+History stays on the file you asked for: switching editors doesn't change it, and asking for
+another file replaces it. Its ✕ closes it; it's also closed after a window reload.
 
 Every commit row compares in the same ways:
 
@@ -281,8 +284,8 @@ below), such as **Review This Commit** and **Show Commit Details**.
 **Stepping through versions:** the ◀ ▶ buttons in the editor title
 move through the file's versions one at a time. Each diff shows one version against the one
 before it, so the left side is always "just before" the right. From a file with uncommitted
-changes, the first step back shows those changes. The history loads only while the view is open,
-or when you first press a button, and is reused until git changes.
+changes, the first step back shows those changes. They work whether or not History is open; a
+file's history loads the first time you press one and is reused until git changes.
 
 Line history uses the committed version's line numbers. If you've edited the file since, the
 lines may have moved.

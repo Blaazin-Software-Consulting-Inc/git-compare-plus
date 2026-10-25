@@ -39,8 +39,8 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 ### History
 
-- **History** view: commits that changed the active file (following renames), or a selection's
-  lines. Compare any version with the previous one, the working tree, any branch, tag, commit or
+- **History**: right-click a file → Show File History (or Show Line History on a selection) to see
+  each commit that changed it, following renames. Hidden until asked for; stays on that file. Compare any version with the previous one, the working tree, any branch, tag, commit or
   worktree, or another version.
 - ◀ ▶ editor buttons step through a file's versions.
 

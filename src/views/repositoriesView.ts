@@ -591,6 +591,7 @@ function stashFileItem(node: Extract<RepoTreeNode, { kind: 'stashFile' }>, exten
   const where = [directory === '.' ? '' : directory, file.status === 'untracked' ? '(untracked)' : ''].filter(Boolean).join(' ');
   item.description = [fileLineStatsText(file.lines), where].filter((part) => part.length > 0).join('  ');
   item.tooltip = file.path;
+  item.contextValue = 'stashFile';
   item.command = { command: 'gitComparePlus.stash.openFile', title: 'Open Change', arguments: [node] };
   return item;
 }

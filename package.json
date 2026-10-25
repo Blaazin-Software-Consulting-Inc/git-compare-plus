@@ -76,13 +76,13 @@
           "name": "Changes"
         },
         {
-          "id": "gitComparePlus.history",
-          "name": "History",
-          "visibility": "collapsed"
-        },
-        {
           "id": "gitComparePlus.commits",
           "name": "Commits"
+        },
+        {
+          "id": "gitComparePlus.history",
+          "name": "History",
+          "when": "gitComparePlus.historyShown"
         }
       ]
     },
@@ -456,6 +456,12 @@
         "title": "Show Only Commits Not on Default Against",
         "category": "Git Compare+",
         "icon": "$(git-compare)"
+      },
+      {
+        "command": "gitComparePlus.history.close",
+        "title": "Close History",
+        "category": "Git Compare+",
+        "icon": "$(close)"
       }
     ],
     "menus": {
@@ -559,6 +565,11 @@
           "command": "gitComparePlus.commits.showAheadOnly",
           "when": "view == gitComparePlus.commits && gitComparePlus.commitsBranchMode == history",
           "group": "navigation@0"
+        },
+        {
+          "command": "gitComparePlus.history.close",
+          "when": "view == gitComparePlus.history",
+          "group": "navigation@9"
         }
       ],
       "view/item/context": [
@@ -791,6 +802,11 @@
           "command": "gitComparePlus.stash.drop",
           "when": "view == gitComparePlus.repositories && viewItem =~ /^stash$/",
           "group": "5_danger@1"
+        },
+        {
+          "command": "gitComparePlus.history.showFile",
+          "when": "viewItem =~ /^(changedFile\\.|commitsFile$|stashFile$)/",
+          "group": "8_history@1"
         }
       ],
       "scm/title": [
@@ -1015,6 +1031,10 @@
         {
           "command": "gitComparePlus.commits.showAheadOnly",
           "when": "gitComparePlus.commitsBranchMode == history"
+        },
+        {
+          "command": "gitComparePlus.history.close",
+          "when": "gitComparePlus.historyShown"
         }
       ],
       "editor/context": [

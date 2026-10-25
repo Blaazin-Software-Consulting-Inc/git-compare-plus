@@ -152,3 +152,25 @@ describe('stash menu (Repositories view)', () => {
     expect(shown(command, 'commit')).toBe(false);
   });
 });
+
+describe('Show File History on file rows', () => {
+  it('is on changed files in Changes, commit files and stash files, and not on other rows', () => {
+    for (const value of ['changedFile.modified', 'changedFile.deleted', 'commitsFile', 'stashFile']) {
+      expect(shown('gitComparePlus.history.showFile', value)).toBe(true);
+    }
+    for (const value of ['commit', 'historyCommit', 'stash', ...Object.values(values)]) {
+      expect(shown('gitComparePlus.history.showFile', value)).toBe(false);
+    }
+  });
+});
+
+describe('History view visibility', () => {
+  it('is hidden until Show File History or Show Line History sets gitComparePlus.historyShown', () => {
+    const views = (JSON.parse(readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
+      contributes: { views: Record<string, { id: string; when?: string }[]> };
+    }).contributes.views['gitComparePlus'] ?? [];
+    expect(views.find((v) => v.id === 'gitComparePlus.history')?.when).toBe('gitComparePlus.historyShown');
+    // Shown last, under the sections that are always there.
+    expect(views.map((v) => v.id).at(-1)).toBe('gitComparePlus.history');
+  });
+});

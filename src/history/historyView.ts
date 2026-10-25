@@ -2,10 +2,10 @@
  * historyView — the "History" view (file and line history) and the editor-title ◀ ▶ buttons that
  * step through a file's versions. Logic lives in historyModel.ts; this module is the VS Code side.
  *
- * What it shows:
- *   - File history of the active editor's file, following it as you switch files, or
- *   - Line history of a selection (Show Line History), which stays until you ask for a file's
- *     history again.
+ * Hidden until asked for: Show File History (editor, Explorer, Changes, Commits and stash file
+ * rows) or Show Line History (a selection) sets `gitComparePlus.historyShown`, which makes the view
+ * appear; its ✕ hides it again, and it starts hidden after every reload. It stays on the file you
+ * asked for: switching editors does not change it, and asking for another file replaces it.
  *
  * Every commit row offers the same comparisons:
  *   click                     the file just before vs at that commit
@@ -16,21 +16,20 @@
  * plus the whole-commit actions every commit list shares (commits/commitActions.ts): Show Commit
  * Details, Open Commit, Review This Commit, Review Changes Since, Copy Commit ID, …
  *
- * Cost: history is loaded only while the view is visible (one `git log --follow` per file, on
- * switching files, waiting for the editor to settle), and the ◀ ▶ buttons load a file's history on
- * first use. Both are cached and cleared on any git change.
+ * Cost: one `git log --follow` (or `-L`) when you ask; the ◀ ▶ buttons load a file's history on
+ * first use. Both are cached and cleared on any git change, which also reloads what is shown.
  */
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { BaseSpec, RepoInfo } from '../comparison';
 import type { GitCli } from '../git/gitCli';
 import type { Logger } from '../logger';
+import type { CommitsNode } from '../commits/commitsView';
+import type { ChangesNode } from '../views/changesView';
+import type { RepoTreeNode } from '../views/repositoriesView';
 import { commitDescription, commitTitle, commitTooltip } from '../views/commitText';
 import { parseRevisionUri, revisionUri, sideToUri } from '../views/content';
 import { HISTORY_LIMIT, historyDescription, previousVersion, step, type FileVersion, type HistoryEntry, type HistoryPosition, type HistoryState } from './historyModel';
-
-// Switching files quickly (Ctrl+Tab through several) should load only the one you stop on.
-const FOLLOW_SETTLE_MS = 300;
 
 /** Collaborators from extension.ts. */
 export interface HistoryDeps {
@@ -98,7 +97,6 @@ export class HistoryController implements vscode.Disposable {
   private readonly provider = new HistoryProvider();
   private readonly view: vscode.TreeView<HistoryNode>;
   private readonly subscriptions: vscode.Disposable[];
-  private followTimer: ReturnType<typeof setTimeout> | undefined;
   // Worktree root per folder (one `rev-parse --show-toplevel` per folder).
   private readonly roots = new Map<string, Promise<string | undefined>>();
   // File histories for ◀ ▶, by `<root>\0<path>`; cleared on git changes.
@@ -110,18 +108,15 @@ export class HistoryController implements vscode.Disposable {
     this.view = vscode.window.createTreeView('gitComparePlus.history', { treeDataProvider: this.provider, canSelectMany: true });
     this.subscriptions = [
       this.view,
+      // A git change while the view was collapsed: catch up when it is expanded again.
       this.view.onDidChangeVisibility((event) => {
-        if (event.visible && (this.stale || this.provider.state === undefined)) {
-          this.followActiveEditor(0);
+        const state = this.provider.state;
+        if (event.visible && this.stale && state !== undefined) {
+          void this.load(state.mode, state.root, state.path, state.lines);
         }
       }),
-      vscode.window.onDidChangeActiveTextEditor(() => {
-        void this.updateEditorContext();
-        // Line history stays put; file history follows the editor.
-        if (this.provider.state?.mode !== 'lines') {
-          this.followActiveEditor(FOLLOW_SETTLE_MS);
-        }
-      }),
+      // Only for the ◀ ▶ buttons; the view itself stays on the file that was asked for.
+      vscode.window.onDidChangeActiveTextEditor(() => void this.updateEditorContext()),
       ...this.registerCommands(),
     ];
     void this.updateEditorContext();
@@ -139,32 +134,6 @@ export class HistoryController implements vscode.Disposable {
       return;
     }
     void this.load(state.mode, state.root, state.path, state.lines);
-  }
-
-  private followActiveEditor(delayMs: number): void {
-    if (this.followTimer !== undefined) {
-      clearTimeout(this.followTimer);
-    }
-    this.followTimer = setTimeout(() => void this.loadForActiveEditor(), delayMs);
-  }
-
-  private async loadForActiveEditor(): Promise<void> {
-    this.followTimer = undefined;
-    // Nothing runs while the view is hidden; it catches up when shown.
-    if (!this.view.visible) {
-      this.stale = true;
-      return;
-    }
-    const file = await this.fileOf(vscode.window.activeTextEditor?.document.uri);
-    if (file === undefined) {
-      // Keep the history on screen: the active editor is a diff, output panel, or similar.
-      return;
-    }
-    const current = this.provider.state;
-    if (!this.stale && current?.mode === 'file' && current.root === file.root && current.path === file.path) {
-      return;
-    }
-    await this.load('file', file.root, file.path);
   }
 
   private async load(mode: 'file' | 'lines', root: string, filePath: string, lines?: { start: number; end: number }): Promise<void> {
@@ -360,14 +329,31 @@ export class HistoryController implements vscode.Disposable {
 
   // --- show history ------------------------------------------------------------------------
 
-  private async showFileHistory(uri: vscode.Uri | undefined): Promise<void> {
-    const file = await this.fileOf(uri ?? vscode.window.activeTextEditor?.document.uri);
+  /**
+   * Show File History for a file: from the editor or Explorer (a URI), from a changed-file row in
+   * Changes, Commits or a stash, or the active editor when called from the Command Palette.
+   */
+  private async showFileHistory(arg: unknown): Promise<void> {
+    const file = fileFromRow(arg) ?? (await this.fileOf(arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri));
     if (file === undefined) {
       void vscode.window.showInformationMessage('Open a file in a git repository to see its history.');
       return;
     }
-    await vscode.commands.executeCommand('gitComparePlus.history.focus');
+    await this.reveal();
     await this.load('file', file.root, file.path);
+  }
+
+  // Makes the view appear (it is hidden until asked for), then focuses it.
+  private async reveal(): Promise<void> {
+    await vscode.commands.executeCommand('setContext', 'gitComparePlus.historyShown', true);
+    await vscode.commands.executeCommand('gitComparePlus.history.focus');
+  }
+
+  /** ✕ in the view's title bar: hide the view and forget what it showed. */
+  private async close(): Promise<void> {
+    this.provider.show(undefined);
+    this.stale = false;
+    await vscode.commands.executeCommand('setContext', 'gitComparePlus.historyShown', false);
   }
 
   private async showLineHistory(): Promise<void> {
@@ -380,7 +366,7 @@ export class HistoryController implements vscode.Disposable {
     const { start, end } = editor.selection;
     // A selection ending at column 0 of a line does not include that line.
     const lastLine = end.character === 0 && end.line > start.line ? end.line - 1 : end.line;
-    await vscode.commands.executeCommand('gitComparePlus.history.focus');
+    await this.reveal();
     await this.load('lines', file.root, file.path, { start: start.line + 1, end: lastLine + 1 });
   }
 
@@ -439,7 +425,8 @@ export class HistoryController implements vscode.Disposable {
         }
       });
     return [
-      guarded('gitComparePlus.history.showFile', (uri?: vscode.Uri) => this.showFileHistory(uri)),
+      guarded('gitComparePlus.history.showFile', (arg?: unknown) => this.showFileHistory(arg)),
+      guarded('gitComparePlus.history.close', () => this.close()),
       guarded('gitComparePlus.history.showLines', () => this.showLineHistory()),
       guarded('gitComparePlus.history.openDiff', (node?: HistoryNode) => this.openDiff(node)),
       guarded('gitComparePlus.history.compareWithWorkingTree', (node?: HistoryNode) => this.compareWithWorkingTree(node)),
@@ -453,13 +440,41 @@ export class HistoryController implements vscode.Disposable {
   }
 
   dispose(): void {
-    if (this.followTimer !== undefined) {
-      clearTimeout(this.followTimer);
-    }
     for (const subscription of this.subscriptions) {
       subscription.dispose();
     }
   }
+}
+
+/**
+ * The file a changed-file row stands for, as worktree root + repo-relative path: a file in Changes
+ * (read in the reviewed worktree, or the repo for a branch), in a commit in the Commits view, or
+ * in a stash. Undefined for anything else (URIs are handled by `fileOf`).
+ */
+function fileFromRow(arg: unknown): { root: string; path: string } | undefined {
+  if (isChangesFile(arg)) {
+    return { root: arg.result.subject.kind === 'worktree' ? arg.result.subject.root : arg.result.repo.root, path: arg.file.path };
+  }
+  if (isCommitsFile(arg)) {
+    return { root: arg.target.root, path: arg.file.path };
+  }
+  if (isStashFile(arg)) {
+    return { root: arg.repo.root, path: arg.entry.file.path };
+  }
+  return undefined;
+}
+
+// Menu arguments arrive untyped; these check which view's row it is.
+function isChangesFile(arg: unknown): arg is Extract<ChangesNode, { kind: 'file' }> {
+  return typeof arg === 'object' && arg !== null && 'kind' in arg && arg.kind === 'file' && 'result' in arg && 'file' in arg;
+}
+
+function isCommitsFile(arg: unknown): arg is Extract<CommitsNode, { kind: 'file' }> {
+  return typeof arg === 'object' && arg !== null && 'kind' in arg && arg.kind === 'file' && 'target' in arg && 'file' in arg;
+}
+
+function isStashFile(arg: unknown): arg is Extract<RepoTreeNode, { kind: 'stashFile' }> {
+  return typeof arg === 'object' && arg !== null && 'kind' in arg && arg.kind === 'stashFile' && 'entry' in arg && 'repo' in arg;
 }
 
 function short(entry: HistoryEntry): string {
