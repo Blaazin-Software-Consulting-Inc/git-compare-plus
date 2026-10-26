@@ -8,7 +8,7 @@
  * within its time budget (suite.cjs).
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +16,9 @@ import { runTests } from '@vscode/test-electron';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const engine = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).engines.vscode.replace(/^[^0-9]*/, '');
-const workspace = mkdtempSync(join(tmpdir(), 'host-smoke-'));
+// Long names: Windows runners' temp folder is a short 8.3 name (C:\Users\RUNNER~1\…), while git
+// reports long ones, so the git extension would see the worktree as outside the window's folder.
+const workspace = realpathSync.native(mkdtempSync(join(tmpdir(), 'host-smoke-')));
 const userData = mkdtempSync(join(tmpdir(), 'vsc-'));
 const git = (...args) => execFileSync('git', args, { cwd: workspace, env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
 try {

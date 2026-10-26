@@ -28,22 +28,29 @@ exports.run = async function run() {
 
   // Open in Source Control adds a worktree that Source Control does not list yet to the editor's
   // own Source Control view, through the git extension's API.
-  const linked = fs.realpathSync(process.env.HOST_SMOKE_LINKED);
-  const repoRoot = fs.realpathSync(process.env.HOST_SMOKE_REPO);
+  // Same folder whatever the spelling: long names, and on Windows any separator or letter case
+  // (Source Control reports `c:\…`, git `C:/…`).
+  const canonical = (p) => {
+    const resolved = fs.realpathSync.native(p);
+    return process.platform === 'win32' ? resolved.replace(/\//g, '\\').toLowerCase() : resolved;
+  };
+  const linked = canonical(process.env.HOST_SMOKE_LINKED);
+  const repoRoot = fs.realpathSync.native(process.env.HOST_SMOKE_REPO);
   const gitApi = vscode.extensions.getExtension('vscode.git').exports.getAPI(1);
-  const isOpen = () => gitApi.repositories.some((r) => fs.realpathSync(r.rootUri.fsPath) === linked);
+  const listed = () => gitApi.repositories.map((r) => r.rootUri.fsPath);
+  const isOpen = () => listed().some((root) => canonical(root) === linked);
   assert.equal(isOpen(), false, 'the linked worktree was already in Source Control');
   await vscode.commands.executeCommand('gitComparePlus.openInSourceControl', {
     kind: 'worktree',
     repo: { name: path.basename(repoRoot), root: repoRoot, commonDir: path.join(repoRoot, '.git') },
-    worktree: { path: linked, branch: 'side', detached: false, bare: false, prunable: false },
+    worktree: { path: fs.realpathSync.native(process.env.HOST_SMOKE_LINKED), branch: 'side', detached: false, bare: false, prunable: false },
     isMain: false,
   });
   // Source Control adds the repository asynchronously after the call returns.
   for (let waited = 0; !isOpen() && waited < 5000; waited += 100) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  assert.equal(isOpen(), true, 'Open in Source Control did not add the worktree to Source Control');
+  assert.equal(isOpen(), true, `Open in Source Control did not add ${linked}; Source Control lists: ${listed().join(', ') || 'nothing'}`);
   process.stdout.write('host smoke: Open in Source Control added the linked worktree\n');
 
   const registered = new Set(await vscode.commands.getCommands(true));
