@@ -1,4 +1,3 @@
-import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { branchLocation, branchesNotCheckedOut, clickHint, localBranchName, locationText, openChoices, switchTargetFor, worktreeName } from '../src/branchLocation';
 import type { RefEntry, WorktreeEntry } from '../src/git/parsers';
@@ -59,7 +58,7 @@ describe('openChoices', () => {
     expect(switchChoice?.detail).toContain('nothing is stashed');
     expect(createChoice).toMatchObject({ action: 'createWorktree', label: '$(new-folder) Create a worktree for feature-y' });
     // The suggested folder is a sibling of the repo (operations.ts defaultWorktreePath).
-    expect(createChoice?.detail).toContain(path.join('r.worktrees', 'feature-y'));
+    expect(createChoice?.detail).toContain('r.worktrees/feature-y');
     expect(createChoice?.detail).toContain('Your current work is untouched');
   });
 
