@@ -4,13 +4,13 @@
  * checks that gate the destructive ones.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GitCli, redactUrlCredentials, summarizeStderr } from '../src/git/gitCli';
 import { checkBranchDeletion, checkWorktreeRemoval, localNameForRemote, switchBlockers } from '../src/operations';
-import { recordingLogger } from './helpers';
+import { gitStylePath, recordingLogger } from './helpers';
 
 let sandbox: string;
 let remote: string;
@@ -33,10 +33,10 @@ function commit(cwd: string, file: string, content: string, message: string): vo
 }
 
 beforeAll(() => {
-  sandbox = realpathSync(mkdtempSync(path.join(tmpdir(), 'git-compare-plus-actions-')));
-  remote = path.join(sandbox, 'remote.git');
-  clone = path.join(sandbox, 'clone');
-  other = path.join(sandbox, 'other');
+  sandbox = gitStylePath(mkdtempSync(path.join(tmpdir(), 'git-compare-plus-actions-')));
+  remote = path.posix.join(sandbox, 'remote.git');
+  clone = path.posix.join(sandbox, 'clone');
+  other = path.posix.join(sandbox, 'other');
   git(sandbox, 'init', '-q', '--bare', '-b', 'master', remote);
   git(sandbox, 'clone', '-q', remote, other);
   commit(other, 'a.txt', 'a\n', 'first');

@@ -1,0 +1,4 @@
+# Every text file is LF in the working tree on every platform. The icon tests compare
+# generated SVGs byte for byte, and the packaged .vsix should not depend on who built it.
+* text=auto eol=lf
+*.png binary

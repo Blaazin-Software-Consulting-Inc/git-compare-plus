@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   COMMIT_LIMIT,
@@ -371,7 +372,8 @@ describe('diffSides', () => {
   it('working tree: base revision vs the live file on disk', () => {
     expect(diffSides(compared(worktree('/wt')), { status: 'modified', path: 'src/a.ts', oldPath: 'src/a.ts' })).toEqual({
       left: { kind: 'revision', cwd: '/wt', revision: 'mb', path: 'src/a.ts' },
-      right: { kind: 'file', absolutePath: '/wt/src/a.ts' },
+      // The file on disk, in the platform's own form (backslashes on Windows).
+      right: { kind: 'file', absolutePath: path.join('/wt', 'src', 'a.ts') },
     });
   });
 

@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   checkBranchDeletion,
@@ -70,9 +71,10 @@ describe('naming', () => {
     expect(localNameForRemote('nobranch')).toBe('nobranch');
   });
 
+  // A folder to create, so in the platform's own form (backslashes on Windows).
   it('suggests a sibling <repo>.worktrees/<flattened-branch> folder', () => {
-    expect(defaultWorktreePath('/ws/club-service', 'feature/DRR-1 fix')).toBe('/ws/club-service.worktrees/feature-DRR-1-fix');
-    expect(defaultWorktreePath('/ws/club-service', '///')).toBe('/ws/club-service.worktrees/worktree');
+    expect(defaultWorktreePath('/ws/club-service', 'feature/DRR-1 fix')).toBe(path.join('/ws', 'club-service.worktrees', 'feature-DRR-1-fix'));
+    expect(defaultWorktreePath('/ws/club-service', '///')).toBe(path.join('/ws', 'club-service.worktrees', 'worktree'));
   });
 });
 

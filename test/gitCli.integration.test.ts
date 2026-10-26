@@ -4,7 +4,7 @@
  * exactly as the extension does. Catches format drift that the parser unit tests cannot.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -12,8 +12,8 @@ import { loadBranchCommits } from '../src/commits/branchCommits';
 import { searchArgs } from '../src/commits/commitSearch';
 import { stashFiles } from '../src/stashes';
 import { runComparisons, type BaseSpec, type Subject } from '../src/comparison';
-import { GitCli } from '../src/git/gitCli';
-import { recordingLogger } from './helpers';
+import { GitCli, GitCommandError } from '../src/git/gitCli';
+import { gitStylePath, recordingLogger } from './helpers';
 
 let sandbox: string;
 let repoRoot: string;
@@ -28,11 +28,13 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 beforeAll(() => {
-  // realpath: macOS tmpdir is a symlink (/var → /private/var) and git reports resolved paths.
-  sandbox = realpathSync(mkdtempSync(path.join(tmpdir(), 'git-compare-plus-')));
-  repoRoot = path.join(sandbox, 'repo');
-  worktreeRoot = path.join(sandbox, 'wt');
+  sandbox = gitStylePath(mkdtempSync(path.join(tmpdir(), 'git-compare-plus-')));
+  repoRoot = path.posix.join(sandbox, 'repo');
+  worktreeRoot = path.posix.join(sandbox, 'wt');
   git(sandbox, 'init', '-q', '-b', 'main', repoRoot);
+  // Files read back after checkout or stash must keep LF on Windows, whatever the machine's
+  // core.autocrlf (GitHub's Windows runners set it to true). Linked worktrees share this config.
+  git(repoRoot, 'config', 'core.autocrlf', 'false');
   writeFileSync(path.join(repoRoot, 'keep.txt'), 'keep\n');
   writeFileSync(path.join(repoRoot, 'edit.txt'), 'v1\n');
   writeFileSync(path.join(repoRoot, 'old-name.txt'), 'rename me\nline2\nline3\n');
@@ -290,6 +292,15 @@ describe('GitCli against a real repository', () => {
     expect(await cli.commit(worktreeRoot, sha)).toMatchObject({ sha, subject: 'base', parents: [] });
     expect((await cli.commitMessage(worktreeRoot, sha)).trim()).toBe('base');
     expect(await cli.commit(worktreeRoot, 'no-such-commit')).toBeUndefined();
+  });
+
+  it('survives a command that exits without reading its stdin (EPIPE), reporting only its exit', async () => {
+    // Node stands in for git: it exits at once (no script called "blame"), never reading the
+    // 4 MB sent on stdin, so the write fails with EPIPE. Unhandled, that error crashed the process.
+    const logger = recordingLogger();
+    const notGit = new GitCli(process.execPath, logger);
+    await expect(notGit.blame(sandbox, 'any.txt', 'x'.repeat(4 * 1024 * 1024))).rejects.toThrow(GitCommandError);
+    expect(logger.calls.debug.some(([message]) => message === 'git stdin closed early')).toBe(true);
   });
 
   it('lists file history across a rename, line history, and whether a file has uncommitted changes', async () => {

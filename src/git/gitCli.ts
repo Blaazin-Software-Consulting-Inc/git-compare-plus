@@ -729,6 +729,12 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
         timeout: options.timeoutMs ?? COMMAND_TIMEOUT_MS,
         env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', ...options.env },
       });
+      // A command that never reads stdin can exit before the write lands (e.g. `rev-parse --quiet`
+      // on Linux), and the pipe then fails with EPIPE. Unhandled, that error event would crash the
+      // extension host; git's exit code and stderr already say whether the command worked.
+      running.child.stdin?.on('error', (error: Error) => {
+        this.logger.debug('git stdin closed early', { function: 'run', cwd, args, reason: error.message });
+      });
       // Text for commands that read stdin (`blame --contents -`); others get an empty, closed stdin.
       running.child.stdin?.end(options.input ?? '');
       const { stdout } = await running;

@@ -1,7 +1,9 @@
 /**
  * Shared test doubles: a logger that records calls, and a fake `ComparisonPort` whose answers
- * each test overrides.
+ * each test overrides; and `gitStylePath` for integration tests that compare paths git printed.
  */
+import { realpathSync } from 'node:fs';
+import * as path from 'node:path';
 import { vi } from 'vitest';
 import type { ComparisonPort, RepoInfo } from '../src/comparison';
 import type { Logger } from '../src/logger';
@@ -17,6 +19,15 @@ export function recordingLogger(): Logger & { calls: Record<Level, unknown[][]> 
     warn: (...args) => calls.warn.push(args),
     error: (...args) => calls.error.push(args),
   };
+}
+
+/**
+ * A temp folder's path as git prints it, so integration tests can compare it with git's output:
+ * fully resolved (macOS `/var` → `/private/var`; Windows long names, not `RUNNER~1`) and with
+ * forward slashes on Windows. Join further segments with `path.posix.join` to keep that form.
+ */
+export function gitStylePath(folder: string): string {
+  return realpathSync.native(folder).split(path.sep).join('/');
 }
 
 export function repo(name: string): RepoInfo {
