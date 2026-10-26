@@ -233,6 +233,8 @@ worktree").
 
 #### Git actions (right-click)
 
+<img src="docs/images/7-worktree-menu.png" alt="A worktree's right-click menu: review, default Against, open in a new window or in Source Control, create a branch, stash changes, remove" width="226" align="right">
+
 Only actions you'd take while reviewing are here. Commit, push, pull, merge and rebase stay in the
 editor's Source Control view; **Open in Source Control** takes you there with the worktree you
 right-clicked.
