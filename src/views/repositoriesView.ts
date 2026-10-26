@@ -43,7 +43,7 @@ import {
   type AheadBehindCounts,
 } from '../aheadBehind';
 import { baseLabel, baseMatches } from '../baseStore';
-import { branchLocation, branchesNotCheckedOut, locationText, type BranchLocation } from '../branchLocation';
+import { branchLocation, branchesNotCheckedOut, clickHint, locationText, type BranchLocation } from '../branchLocation';
 import { formatAge, isFetchStale } from '../operations';
 import { displayPath, isOneOf } from '../paths';
 import { FailureTracker, repositoriesStaleMessage } from '../autoRefresh/failureTracker';
@@ -362,7 +362,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     return pending;
   }
 
-  // Sorted once here (treeOrder.ts) so the tree, the Compare With… picker and the delete
+  // Sorted once here (treeOrder.ts) so the tree, the Review Against… picker and the delete
   // dialogs all list worktrees and branches in the same order.
   private async loadDetails(repo: RepoInfo): Promise<RepoDetails> {
     const git = await this.deps.getGit();
@@ -567,7 +567,7 @@ function worktreeItem(
     .filter(Boolean)
     .join(' · ');
   const dirty = uncommittedTooltip(uncommitted);
-  item.tooltip = withAheadBehindTooltip(`${worktree.path}${inWindow ? '\nOpen in this window.' : '\nOpen… opens it in a new window.'}${dirty === undefined ? '' : `\n${dirty}`}`, position);
+  item.tooltip = rowTooltip(`${worktree.path}${inWindow ? '\nOpen in this window.' : '\nOpen… opens it in a new window.'}${dirty === undefined ? '' : `\n${dirty}`}`, position);
   item.contextValue = `comparable.worktree${isMain ? '.main' : ''}${isBase ? '.base' : ''}`;
   return item;
 }
@@ -595,7 +595,7 @@ function branchItem(
       : location.kind === 'otherWorktree'
         ? `Checked out in ${location.worktree.path}. Open… opens that worktree in a new window.`
         : 'Not checked out. Open… lets you switch to it or create a worktree for it.';
-  item.tooltip = withAheadBehindTooltip(`${ref.name} @ ${ref.sha}${ref.upstream !== undefined ? ` → ${ref.upstream}` : ''}\n${opens}`, position);
+  item.tooltip = rowTooltip(`${ref.name} @ ${ref.sha}${ref.upstream !== undefined ? ` → ${ref.upstream}` : ''}\n${opens}`, position);
   item.contextValue = `comparable.branch.${ref.kind}${checkedOutIn !== undefined ? '.checkedOut' : ''}${isBase ? '.base' : ''}`;
   return item;
 }
@@ -634,9 +634,10 @@ interface RowAheadBehind {
   readonly baseLabel: string | undefined;
 }
 
-function withAheadBehindTooltip(tooltip: string, position: RowAheadBehind): string {
+// Adds the ahead/behind line, then what a click and the compare button do (clickHint).
+function rowTooltip(tooltip: string, position: RowAheadBehind): string {
   const line = position.baseLabel === undefined ? undefined : aheadBehindTooltip(position.counts, position.baseLabel);
-  return line === undefined ? tooltip : `${tooltip}\n${line}`;
+  return `${line === undefined ? tooltip : `${tooltip}\n${line}`}\n${clickHint(position.baseLabel)}`;
 }
 
 /**

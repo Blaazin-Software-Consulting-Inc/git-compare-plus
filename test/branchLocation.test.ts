@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { branchLocation, branchesNotCheckedOut, localBranchName, locationText, openChoices, switchTargetFor, worktreeName } from '../src/branchLocation';
+import { branchLocation, branchesNotCheckedOut, clickHint, localBranchName, locationText, openChoices, switchTargetFor, worktreeName } from '../src/branchLocation';
 import type { RefEntry, WorktreeEntry } from '../src/git/parsers';
 
 const wt = (p: string, branch?: string): WorktreeEntry => ({ path: p, branch, head: 'abc', detached: branch === undefined, bare: false, prunable: false });
@@ -76,5 +76,15 @@ describe('switchTargetFor', () => {
     expect(switchTargetFor(worktrees, ['/r/.wt/x'])).toMatchObject({ worktree: { path: '/r/.wt/x' }, inWindow: true });
     expect(switchTargetFor(worktrees, ['/elsewhere'])).toMatchObject({ worktree: { path: ROOT }, inWindow: false });
     expect(switchTargetFor([], [])).toBeUndefined();
+  });
+});
+
+describe('clickHint', () => {
+  it('says a click lists commits and the compare button reviews in Changes, naming the Against', () => {
+    expect(clickHint('origin/main')).toBe('Click to list its commits in Commits. The compare button reviews its changes in Changes, against origin/main.');
+  });
+
+  it("falls back to the repo's default Against when it is not known yet", () => {
+    expect(clickHint(undefined)).toContain("against the repo's default Against.");
   });
 });

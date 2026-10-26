@@ -5,7 +5,8 @@
  *
  * Selection follows Repositories only while this view is visible; a selection made while it is
  * hidden is loaded when it is shown. The title bar toggles between "commits not on the default
- * Against" and the full history.
+ * Against" and the full history, and its Review in Changes button runs the selection's comparison
+ * (the row's compare button) for when, after scanning the commits, you want their changes.
  *
  * For a worktree, an "Uncommitted changes · N files" row comes first: what is on disk but not
  * committed (against its last commit), with the usual badges and line counts; its Review button
@@ -78,7 +79,9 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
   private readonly details = new Map<string, Promise<CommitDetails>>();
   private readonly subscriptions: vscode.Disposable[];
   // The selected worktree/branch being listed (or waiting for the view to be shown), and how.
-  private branch: { readonly repo: RepoInfo; readonly request: BranchCommitsRequest } | undefined;
+  // `review` opens the same selection in Changes against the default Against (the row's compare
+  // button); a callback, so this view needs no knowledge of Repositories' tree nodes.
+  private branch: { readonly repo: RepoInfo; readonly request: BranchCommitsRequest; readonly review: () => Promise<void> } | undefined;
   private branchPending = false;
   private branchMode: BranchCommitsMode = 'auto';
   // Drops a slow load whose selection has since been replaced.
@@ -100,6 +103,7 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
       }),
       vscode.commands.registerCommand('gitComparePlus.commits.showFullHistory', () => this.guard('showFullHistory', () => this.setBranchMode('history'))),
       vscode.commands.registerCommand('gitComparePlus.commits.showAheadOnly', () => this.guard('showAheadOnly', () => this.setBranchMode('auto'))),
+      vscode.commands.registerCommand('gitComparePlus.commits.reviewBranch', () => this.guard('reviewBranch', () => this.reviewBranch())),
       this.view.onDidChangeVisibility((event) => {
         if (event.visible && this.branchPending) {
           void this.guard('loadBranch', () => this.loadBranch());
@@ -111,9 +115,10 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
   /**
    * A worktree or branch was selected in Repositories: list its commits (see branchCommits.ts).
    * Runs git only if this view is visible; otherwise remembers the selection for when it is.
+   * @param review - opens this selection in Changes (the title bar's Review in Changes).
    */
-  async showBranch(repo: RepoInfo, request: BranchCommitsRequest): Promise<void> {
-    this.branch = { repo, request };
+  async showBranch(repo: RepoInfo, request: BranchCommitsRequest, review: () => Promise<void>): Promise<void> {
+    this.branch = { repo, request, review };
     if (!this.view.visible) {
       this.branchPending = true;
       return;
@@ -416,6 +421,16 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     }
     const sides = diffSides(node.result, node.file);
     await vscode.commands.executeCommand('vscode.diff', sideToUri(sides.left, node.file.oldPath), sideToUri(sides.right, node.file.path), `${path.posix.basename(node.file.path)} (last commit ↔ working tree)`);
+  }
+
+  /** Title bar "Review in Changes": the listed worktree or branch, against the default Against. */
+  private async reviewBranch(): Promise<void> {
+    const selected = this.branch;
+    if (selected === undefined) {
+      return;
+    }
+    this.deps.logger.info('branch review requested', { function: 'reviewBranch', repo: selected.repo.name, revision: selected.request.revision });
+    await selected.review();
   }
 
   /** The Uncommitted changes row's Review: those changes in Changes, against the last commit. */

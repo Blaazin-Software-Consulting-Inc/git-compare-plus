@@ -196,7 +196,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     }
     selectionTimer = setTimeout(() => {
       void branchCommitsRequest(only, repositories, bases).then(
-        (request) => (request === undefined ? undefined : commitsView.showBranch(request.repo, request.request)),
+        (request) => (request === undefined ? undefined : commitsView.showBranch(request.repo, request.request, () => commands.compareNode(only, 'stored'))),
         (error: unknown) =>
           logger.warn('branch commits unavailable', { function: 'followSelection', reason: error instanceof Error ? error.message : String(error) }),
       );

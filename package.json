@@ -458,6 +458,12 @@
         "icon": "$(git-compare)"
       },
       {
+        "command": "gitComparePlus.commits.reviewBranch",
+        "title": "Review in Changes",
+        "category": "Git Compare+",
+        "icon": "$(git-compare)"
+      },
+      {
         "command": "gitComparePlus.history.close",
         "title": "Close History",
         "category": "Git Compare+",
@@ -587,6 +593,11 @@
         {
           "command": "gitComparePlus.commits.showAheadOnly",
           "when": "view == gitComparePlus.commits && gitComparePlus.commitsBranchMode == history",
+          "group": "navigation@0"
+        },
+        {
+          "command": "gitComparePlus.commits.reviewBranch",
+          "when": "view == gitComparePlus.commits && gitComparePlus.commitsBranchMode =~ /^(auto|history)$/",
           "group": "navigation@0"
         },
         {
@@ -1093,6 +1104,10 @@
         },
         {
           "command": "gitComparePlus.stash.push",
+          "when": "false"
+        },
+        {
+          "command": "gitComparePlus.commits.reviewBranch",
           "when": "false"
         }
       ],

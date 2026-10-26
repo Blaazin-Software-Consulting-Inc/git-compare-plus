@@ -50,7 +50,8 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
   hover), and the Commits view lists a selected worktree's uncommitted changes above its commits.
 - **Commits** view: selecting a worktree or branch lists its commits (what it has that the default
   Against doesn't, or its history); search by message, author, file, changed text or ID, on every
-  branch and tag.
+  branch and tag. Its **Review in Changes** button opens the listed worktree or branch in Changes;
+  a click on a row only lists (each row's hover says what a click and the compare button do).
   Commits expand to their author, parents and changed files.
 - The same commit actions everywhere a commit is listed: Review This Commit, Review Changes Since,
   Review Against…, Select / Review Against Selected, Compare These Two, Show Details, Copy ID.

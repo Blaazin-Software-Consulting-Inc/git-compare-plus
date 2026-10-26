@@ -185,3 +185,25 @@ describe('Uncommitted changes row (Commits view)', () => {
     }
   });
 });
+
+describe('Review in Changes (Commits view title bar)', () => {
+  const entry = pkg.contributes.menus['view/title']?.find((e) => e.command === 'gitComparePlus.commits.reviewBranch');
+  // The when clause's regex over gitComparePlus.commitsBranchMode, which commitsView.ts sets to the
+  // list mode while a selected worktree or branch is listed and to '' otherwise (search, details).
+  const modeRegex = new RegExp(/commitsBranchMode =~ \/((?:\\\/|[^/])+)\//.exec(entry?.when ?? '')?.[1] ?? '^$never');
+
+  it('is in the Commits title bar while a selected worktree or branch is listed, in either mode', () => {
+    expect(entry?.when).toContain('view == gitComparePlus.commits');
+    expect(modeRegex.test('auto')).toBe(true);
+    expect(modeRegex.test('history')).toBe(true);
+  });
+
+  it('is hidden for search results, commit details and an empty view (mode unset or empty)', () => {
+    expect(modeRegex.test('')).toBe(false);
+    expect(modeRegex.test('undefined')).toBe(false);
+  });
+
+  it('is not in the Command Palette, where there is no selection to review', () => {
+    expect(pkg.contributes.menus['commandPalette']?.find((e) => e.command === 'gitComparePlus.commits.reviewBranch')?.when).toBe('false');
+  });
+});

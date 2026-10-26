@@ -201,7 +201,9 @@ by one, and remote branches show no counts.
   target marker. **Reset Default Against** goes back to the default branch. The choice is
   saved per workspace.
 - **Right-click a worktree → Open Worktree in New Window**.
-- **Select** a worktree or branch to list its commits in the **Commits** view (see below).
+- **Select** a worktree or branch to list its commits in the **Commits** view (see below). A click
+  only lists; it never replaces the comparison in Changes, which may hold a review in progress.
+  The row's compare button does that (each row's hover says so).
 - **Title bar**: **Compare All Repos** compares every repo's main worktree with its own default
   branch in one go; **Fetch All Repos** fetches every repo.
 
@@ -326,9 +328,12 @@ the top: what's on disk but not committed, against its last commit, with the usu
 counts. Click a file for its diff, or the row's **Review** button to open them in Changes.
 Uncommitted work isn't a commit, so it's never mixed into the commit list.
 
-The history button in the view's title bar switches to the full history, and back. Selecting a repo
-row lists its main worktree. Nothing is switched or opened; it only lists. Selecting several rows
-(to delete them) leaves the list alone.
+The history button in the view's title bar switches to the full history, and back. **Review in
+Changes** (the compare button next to it) opens the listed worktree or branch in Changes against
+the repo's default Against, the same as the row's own compare button, for when you have scanned
+its commits and want their changes. Selecting a repo row lists its main worktree. Selecting only
+lists: nothing is switched, opened or compared until you ask. Selecting several rows (to delete
+them) leaves the list alone.
 
 The view also has **Search Commits…** (search button in its title bar). Choose what to search by,
 then type:

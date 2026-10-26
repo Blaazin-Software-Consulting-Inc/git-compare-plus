@@ -16,6 +16,10 @@
  * A remote branch (`origin/x`) lives wherever its local branch `x` does; opening it when `x` does
  * not exist yet creates `x` tracking `origin/x`.
  *
+ * Clicking a row and its compare button also do different things (clickHint): a click only lists
+ * the row's commits in Commits, a cheap preview; the compare button replaces the comparison in
+ * Changes, which holds a review in progress, so it is never done by a plain click.
+ *
  * Pure (no `vscode` import); unit-tested in test/branchLocation.test.ts.
  */
 import type { RefEntry, WorktreeEntry } from './git/parsers';
@@ -125,4 +129,15 @@ export function switchTargetFor(worktrees: readonly WorktreeEntry[], windowFolde
   }
   const main = worktrees[0];
   return main === undefined ? undefined : { worktree: main, inWindow: false };
+}
+
+/**
+ * The hover line that says what clicking a worktree or branch row does, and what its compare
+ * button does instead.
+ * @param againstLabel - what the compare button compares with (the repo's default Against, e.g.
+ *   `origin/main`); undefined when not known yet, worded generically.
+ */
+export function clickHint(againstLabel: string | undefined): string {
+  const against = againstLabel ?? "the repo's default Against";
+  return `Click to list its commits in Commits. The compare button reviews its changes in Changes, against ${against}.`;
 }
