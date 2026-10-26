@@ -1,0 +1,64 @@
+# Release: pushing a tag `v<version>` (e.g. v1.0.0) publishes that commit to the Visual Studio
+# Marketplace and Open VSX and creates a GitHub Release with the .vsix and the CHANGELOG entry.
+#
+# Order: the full CI (all three platforms, host test, benchmark) must pass on the tagged commit;
+# then scripts/release-notes.mjs checks the tag, package.json and CHANGELOG agree; only then does
+# anything get published. The publish job runs in the `release` environment, which holds the
+# store tokens (VSCE_PAT, OVSX_PAT) and can require an approval. CONTRIBUTING.md#releasing has
+# the one-time setup and the checklist.
+#
+# Re-running after a partial failure is safe: both stores skip a version they already have, and
+# the GitHub Release is created only if it does not exist yet.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+# Never two releases at once, and never cancel one half-published.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write # create the GitHub Release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Check the tag, package.json and CHANGELOG agree
+        run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" --out release-notes.md
+      - run: npm run package
+      - run: npm run budget
+      - name: Publish to the Visual Studio Marketplace
+        run: ./node_modules/.bin/vsce publish --packagePath git-compare-plus.vsix --skip-duplicate
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to Open VSX
+        run: ./node_modules/.bin/ovsx publish --packagePath git-compare-plus.vsix --skip-duplicate
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      - name: Create the GitHub Release
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "GitHub Release $GITHUB_REF_NAME already exists; leaving it as it is."
+          else
+            gh release create "$GITHUB_REF_NAME" git-compare-plus.vsix \
+              --verify-tag --title "Git Compare+ ${GITHUB_REF_NAME#v}" --notes-file release-notes.md
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -25,7 +25,8 @@ npm run screenshots      # retake docs/images/1-6: a demo scene in expressjs/exp
 ```
 
 CI (`.github/workflows/ci.yml`) runs the tests, packaging, the budget and the host test on macOS,
-Linux and Windows, and the benchmark with `--check` on Linux.
+Linux and Windows, and the benchmark with `--check` on Linux. Pushing a `v*` tag runs the release
+workflow (`.github/workflows/release.yml`): see [Releasing](#releasing).
 
 To try a build, install the `.vsix` and run **Developer: Reload Window**:
 
@@ -134,3 +135,56 @@ In Cursor, add `--profile <name>` to install into a profile other than Default.
 - **Context menus** depend on each item's state. Tree items carry flags such as
   `comparable.branch.local.checkedOut.base`, and `package.json` matches them with regexes;
   `test/menus.test.ts` checks each action appears exactly where it should.
+
+## Releasing
+
+Pushing a tag `v<version>` publishes that commit: `.github/workflows/release.yml` runs the full
+CI on it, checks the tag, `package.json` and `CHANGELOG.md` agree (`scripts/release-notes.mjs`),
+then publishes to the Visual Studio Marketplace and Open VSX and creates a GitHub Release with the
+`.vsix` and the CHANGELOG entry. A published version number can never be reused on either store,
+so the checks come first.
+
+### One-time setup
+
+1. **Marketplace publisher.** At https://marketplace.visualstudio.com/manage, create the
+   publisher `blaazinsoftware` (it must match `publisher` in `package.json`). Create an Azure
+   DevOps personal access token with **Organization: All accessible organizations** and the
+   scope **Marketplace → Manage**.
+2. **Open VSX namespace.** Sign in at https://open-vsx.org with GitHub, sign the Eclipse
+   Foundation publisher agreement (profile page), and create an access token. Create the
+   namespace once, with the token in the `OVSX_PAT` environment variable (not on the command
+   line, where it lands in shell history): `./node_modules/.bin/ovsx create-namespace blaazinsoftware`.
+3. **GitHub environment.** In the repo's **Settings → Environments**, create `release`, add
+   yourself as a required reviewer (each release then waits for an approval before publishing),
+   and add the two tokens as environment secrets `VSCE_PAT` and `OVSX_PAT`.
+
+Both tokens expire (Azure DevOps tokens after at most a year): renew them before a release, not
+during one.
+
+### Each release
+
+1. On `develop/<major.minor>`: set `version` in `package.json`, and date its CHANGELOG entry as
+   `## <version> (YYYY-MM-DD)`, the day it is published.
+2. Locally: `npm test`, `npm run package`, `npm run budget`, `npm run test:host`, and
+   `node scripts/release-notes.mjs v<version>` (prints the notes the GitHub Release will get).
+3. Commit, fast-forward `main` to it, push `main`, and wait for CI to pass on all three platforms.
+4. Tag and push the tag:
+   ```bash
+   git tag -a v1.0.0 -m "Git Compare+ 1.0.0"
+   ```
+   ```bash
+   git push origin v1.0.0
+   ```
+5. Approve the `release` environment when the workflow asks (after its CI passes).
+6. Check the listings: https://marketplace.visualstudio.com/items?itemName=blaazinsoftware.git-compare-plus
+   and https://open-vsx.org/extension/blaazinsoftware/git-compare-plus (the README images come
+   from this GitHub repo, so they need it public), then install from each store into VS Code and
+   Cursor.
+
+**If the workflow fails:**
+
+- **Before publishing** (CI or the release check): fix it on the branch, delete the tag
+  (`git push --delete origin v1.0.0`, `git tag -d v1.0.0`), and tag the fixed commit again.
+- **After one store published:** re-run the failed job. Both publish steps skip a version the
+  store already has, and the GitHub Release is only created if it doesn't exist yet. Never move a
+  tag that has been published: fix forward with the next patch version.

@@ -2,7 +2,7 @@
 
 All notable changes to Git Compare+. Versions before 1.0.0 were internal and not published.
 
-## 1.0.0 (unreleased)
+## 1.0.0 (2026-10-26)
 
 First public release, as **Git Compare+** (previously developed as "Git Branch & Worktree
 Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
