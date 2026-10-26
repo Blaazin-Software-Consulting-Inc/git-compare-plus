@@ -35,6 +35,8 @@ export interface BranchCommitsRequest {
   readonly label: string;
   /** The repo's default Against, resolved to a commit-ish; undefined when it has none. */
   readonly against?: { readonly label: string; readonly commitish: string };
+  /** Set for a worktree (or repo) row: its uncommitted changes are listed above the commits. */
+  readonly worktree?: { readonly root: string; readonly label: string };
 }
 
 /** The commits to show and how to describe them. */

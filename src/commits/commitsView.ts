@@ -7,6 +7,10 @@
  * hidden is loaded when it is shown. The title bar toggles between "commits not on the default
  * Against" and the full history.
  *
+ * For a worktree, an "Uncommitted changes · N files" row comes first: what is on disk but not
+ * committed (against its last commit), with the usual badges and line counts; its Review button
+ * opens them in Changes. Uncommitted work is not a commit, so it is never mixed into the list.
+ *
  * Each commit row expands to its details: author and date, its parent(s) (click one to show its
  * details), and the files it changed, with A/M/D/R badges, line counts and diff bars as in Changes.
  * Clicking a file opens its diff (first parent ↔ commit). The full message is the row's hover.
@@ -16,7 +20,8 @@
  */
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { diffSides, type ComparisonResult, type RepoInfo } from '../comparison';
+import { diffSides, runComparisons, type BaseSpec, type ComparisonResult, type RepoInfo, type Subject } from '../comparison';
+import type { ComparisonSetup } from '../views/changesHeader';
 import type { GitCli } from '../git/gitCli';
 import type { ChangedFile, CommitEntry } from '../git/parsers';
 import type { Logger } from '../logger';
@@ -35,6 +40,10 @@ export interface CommitsViewDeps {
   /** Which repo to search in (skipped when there is one). */
   pickRepository(): Promise<RepoInfo | undefined>;
   readonly extensionUri: vscode.Uri;
+  /** Setting `gitComparePlus.includeUntracked`. */
+  includeUntracked(): boolean;
+  /** Show a comparison in Changes (the Uncommitted changes row's Review). */
+  review(setup: ComparisonSetup): Promise<void>;
   readonly logger: Logger;
 }
 
@@ -44,7 +53,9 @@ export type CommitsNode =
   | { readonly kind: 'info'; readonly text: string; readonly icon: string; readonly tooltip?: string }
   | { readonly kind: 'parent'; readonly target: CommitTarget; readonly label: string }
   | { readonly kind: 'file'; readonly target: CommitTarget; readonly file: ChangedFile; readonly parentRevision: string }
-  | { readonly kind: 'message'; readonly text: string };
+  | { readonly kind: 'message'; readonly text: string }
+  | { readonly kind: 'uncommitted'; readonly result: ComparisonResult }
+  | { readonly kind: 'uncommittedFile'; readonly result: ComparisonResult; readonly file: ChangedFile };
 
 /** One commit's loaded details. */
 interface CommitDetails {
@@ -72,6 +83,8 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
   private branchMode: BranchCommitsMode = 'auto';
   // Drops a slow load whose selection has since been replaced.
   private branchGeneration = 0;
+  // The selected worktree's uncommitted changes (against its last commit); undefined when clean.
+  private uncommitted: ComparisonResult | undefined;
 
   constructor(private readonly deps: CommitsViewDeps) {
     this.view = vscode.window.createTreeView('gitComparePlus.commits', { treeDataProvider: this, canSelectMany: true, showCollapseAll: true });
@@ -79,6 +92,8 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
       this.view,
       vscode.commands.registerCommand('gitComparePlus.commits.search', () => this.guard('search', () => this.search())),
       vscode.commands.registerCommand('gitComparePlus.commits.openFile', (node?: CommitsNode) => this.guard('openFile', () => this.openFile(node))),
+      vscode.commands.registerCommand('gitComparePlus.commits.openUncommittedFile', (node?: CommitsNode) => this.guard('openUncommittedFile', () => this.openUncommittedFile(node))),
+      vscode.commands.registerCommand('gitComparePlus.commits.reviewUncommitted', (node?: CommitsNode) => this.guard('reviewUncommitted', () => this.reviewUncommitted(node))),
       vscode.commands.registerCommand('gitComparePlus.commits.clear', () => {
         this.branch = undefined;
         this.show([], undefined, false);
@@ -106,6 +121,23 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     await this.loadBranch();
   }
 
+  // The worktree's edits against its own last commit: the same comparison Changes would run, so
+  // line counts and file kinds match. Best-effort: on failure the commits are still listed (WARN).
+  private async loadUncommitted(git: GitCli, repo: RepoInfo, request: BranchCommitsRequest): Promise<ComparisonResult | undefined> {
+    if (request.worktree === undefined) {
+      return undefined;
+    }
+    const [result] = await runComparisons(git, [{ repo, subject: uncommittedSubject(request.worktree) }], LAST_COMMIT, 'direct', {
+      includeUntracked: this.deps.includeUntracked(),
+      logger: this.deps.logger,
+    });
+    if (result === undefined || result.outcome !== 'compared') {
+      this.deps.logger.warn('uncommitted changes unavailable', { function: 'loadUncommitted', repo: repo.name, worktree: request.worktree.root, outcome: result?.outcome });
+      return undefined;
+    }
+    return result.files.length > 0 ? result : undefined;
+  }
+
   private async setBranchMode(mode: BranchCommitsMode): Promise<void> {
     this.branchMode = mode;
     if (this.branch !== undefined) {
@@ -122,10 +154,12 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     const generation = ++this.branchGeneration;
     this.view.description = 'loading…';
     const startedAt = Date.now();
-    const list = await loadBranchCommits(await this.deps.getGit(), selected.request, this.branchMode);
+    const git = await this.deps.getGit();
+    const [list, uncommitted] = await Promise.all([loadBranchCommits(git, selected.request, this.branchMode), this.loadUncommitted(git, selected.repo, selected.request)]);
     if (generation !== this.branchGeneration) {
       return;
     }
+    this.uncommitted = uncommitted;
     this.deps.logger.debug('branch commits loaded', {
       function: 'loadBranch',
       repo: selected.repo.name,
@@ -204,6 +238,7 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     // A search or a commit's details replaces a branch list: the mode toggle no longer applies.
     if (!isBranchList) {
       this.branch = undefined;
+      this.uncommitted = undefined;
       void vscode.commands.executeCommand('setContext', 'gitComparePlus.commitsBranchMode', '');
     }
     this.commits = commits;
@@ -215,11 +250,15 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
 
   async getChildren(node?: CommitsNode): Promise<CommitsNode[]> {
     if (node === undefined) {
+      const uncommittedRow: CommitsNode[] = this.uncommitted === undefined ? [] : [{ kind: 'uncommitted', result: this.uncommitted }];
       if (this.commits.length === 0) {
         // An empty list shows the view's welcome content (package.json viewsWelcome).
-        return this.emptyText === undefined ? [] : [{ kind: 'message', text: this.emptyText }];
+        return [...uncommittedRow, ...(this.emptyText === undefined ? [] : [{ kind: 'message' as const, text: this.emptyText }])];
       }
-      return this.commits.map((target) => ({ kind: 'commit', target, expanded: this.expandAll }));
+      return [...uncommittedRow, ...this.commits.map((target): CommitsNode => ({ kind: 'commit', target, expanded: this.expandAll }))];
+    }
+    if (node.kind === 'uncommitted') {
+      return node.result.files.map((file) => ({ kind: 'uncommittedFile', result: node.result, file }));
     }
     if (node.kind !== 'commit') {
       return [];
@@ -299,6 +338,10 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
       }
       case 'file':
         return this.fileItem(node);
+      case 'uncommitted':
+        return uncommittedItem(node.result);
+      case 'uncommittedFile':
+        return this.uncommittedFileItem(node.result, node.file);
       case 'message': {
         const item = new vscode.TreeItem(node.text);
         item.iconPath = new vscode.ThemeIcon('info');
@@ -351,6 +394,38 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     return item;
   }
 
+  private uncommittedFileItem(result: ComparisonResult, file: ChangedFile): vscode.TreeItem {
+    const item = new vscode.TreeItem(path.posix.basename(file.path));
+    item.resourceUri = changedFileUri(file, result.repo.commonDir);
+    const icon = diffBarIcon(file, this.deps.extensionUri);
+    if (icon !== undefined) {
+      item.iconPath = icon;
+    }
+    const directory = path.posix.dirname(file.path);
+    item.description = [fileLineStatsText(file.lines), directory === '.' ? '' : directory].filter((part) => part.length > 0).join('  ');
+    item.tooltip = `${file.path}\nNot committed yet. Click to compare with the last commit.`;
+    item.contextValue = 'uncommittedFile';
+    item.command = { command: 'gitComparePlus.commits.openUncommittedFile', title: 'Open Change', arguments: [{ kind: 'uncommittedFile', result, file }] };
+    return item;
+  }
+
+  // The file at the worktree's last commit vs as it is on disk (editable).
+  private async openUncommittedFile(node: CommitsNode | undefined): Promise<void> {
+    if (node?.kind !== 'uncommittedFile') {
+      return;
+    }
+    const sides = diffSides(node.result, node.file);
+    await vscode.commands.executeCommand('vscode.diff', sideToUri(sides.left, node.file.oldPath), sideToUri(sides.right, node.file.path), `${path.posix.basename(node.file.path)} (last commit ↔ working tree)`);
+  }
+
+  /** The Uncommitted changes row's Review: those changes in Changes, against the last commit. */
+  private async reviewUncommitted(node: CommitsNode | undefined): Promise<void> {
+    if (node?.kind !== 'uncommitted' || node.result.subject.kind !== 'worktree') {
+      return;
+    }
+    await this.deps.review({ requests: [{ repo: node.result.repo, subject: node.result.subject }], base: LAST_COMMIT, mode: 'direct' });
+  }
+
   // The file before (first parent) and after the commit.
   private async openFile(node: CommitsNode | undefined): Promise<void> {
     if (node?.kind !== 'file') {
@@ -391,4 +466,22 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
       subscription.dispose();
     }
   }
+}
+
+// "Against: last commit": HEAD, resolved in the reviewed worktree (comparison.ts runs git there).
+const LAST_COMMIT: BaseSpec = { kind: 'ref', ref: 'HEAD', label: 'last commit', refKind: 'commit' };
+
+function uncommittedSubject(worktree: { readonly root: string; readonly label: string }): Subject {
+  return { kind: 'worktree', root: worktree.root, label: worktree.label, includeUncommitted: true };
+}
+
+function uncommittedItem(result: ComparisonResult): vscode.TreeItem {
+  const count = result.files.length;
+  const item = new vscode.TreeItem('Uncommitted changes', vscode.TreeItemCollapsibleState.Collapsed);
+  item.id = `uncommitted:${result.subject.kind === 'worktree' ? result.subject.root : result.repo.root}`;
+  item.description = `${count} file${count === 1 ? '' : 's'} · not committed yet`;
+  item.tooltip = 'What is on disk in this worktree but not committed, against its last commit. Review opens it in Changes.';
+  item.iconPath = new vscode.ThemeIcon('edit');
+  item.contextValue = 'uncommittedGroup';
+  return item;
 }

@@ -14,6 +14,7 @@ import {
   parseNumstatZ,
   parseRefList,
   parseStashList,
+  parseStatusCounts,
   parseTagList,
   parseWorktreeList,
 } from '../src/git/parsers';
@@ -369,5 +370,17 @@ describe('parseStashList', () => {
     expect(parseStashList(record('stash@{0}', 's', 'p', '1', 'custom') + '\0')[0]).toMatchObject({ message: 'custom', named: false, branch: undefined });
     expect(parseStashList(record('stash@{0}', 's', 'p', 'nope', 'x'))).toEqual([]);
     expect(parseStashList('')).toEqual([]);
+  });
+});
+
+describe('parseStatusCounts', () => {
+  it('counts staged, unstaged and untracked paths; a path can be both staged and unstaged', () => {
+    // M  staged only · " M" unstaged only · MM both · ?? untracked · R  rename (extra token) · " D" deleted on disk
+    const out = ['M  a.ts', ' M b.ts', 'MM c.ts', '?? new.ts', 'R  renamed.ts', 'old.ts', ' D gone.ts', ''].join('\0');
+    expect(parseStatusCounts(out)).toEqual({ staged: 3, unstaged: 3, untracked: 1, total: 6 });
+  });
+
+  it('is all zero for a clean worktree', () => {
+    expect(parseStatusCounts('')).toEqual({ staged: 0, unstaged: 0, untracked: 0, total: 0 });
   });
 });

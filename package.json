@@ -462,6 +462,17 @@
         "title": "Close History",
         "category": "Git Compare+",
         "icon": "$(close)"
+      },
+      {
+        "command": "gitComparePlus.commits.reviewUncommitted",
+        "title": "Review Uncommitted Changes",
+        "category": "Git Compare+",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "gitComparePlus.commits.openUncommittedFile",
+        "title": "Open Change",
+        "category": "Git Compare+"
       }
     ],
     "menus": {
@@ -805,8 +816,18 @@
         },
         {
           "command": "gitComparePlus.history.showFile",
-          "when": "viewItem =~ /^(changedFile\\.|commitsFile$|stashFile$)/",
+          "when": "viewItem =~ /^(changedFile\\.|commitsFile$|stashFile$|uncommittedFile$)/",
           "group": "8_history@1"
+        },
+        {
+          "command": "gitComparePlus.commits.reviewUncommitted",
+          "when": "view == gitComparePlus.commits && viewItem =~ /^uncommittedGroup$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitComparePlus.commits.reviewUncommitted",
+          "when": "view == gitComparePlus.commits && viewItem =~ /^uncommittedGroup$/",
+          "group": "1_review@1"
         }
       ],
       "scm/title": [
@@ -1035,6 +1056,14 @@
         {
           "command": "gitComparePlus.history.close",
           "when": "gitComparePlus.historyShown"
+        },
+        {
+          "command": "gitComparePlus.commits.reviewUncommitted",
+          "when": "false"
+        },
+        {
+          "command": "gitComparePlus.commits.openUncommittedFile",
+          "when": "false"
         }
       ],
       "editor/context": [

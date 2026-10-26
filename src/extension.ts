@@ -98,6 +98,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     getBase: (repo) => bases.get(repo.commonDir),
     staleFetchHours: () => settings().staleFetchHours,
     extensionUri: context.extensionUri,
+    includeUntracked: () => settings().includeUntracked,
     windowFolders: () => windowFolders(),
     onPersistentFailure: (repoName, reason) =>
       void notifyPersistentFailure(`the ${repoName} repository`, reason, channel, [
@@ -163,6 +164,8 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
       return picked === 'all' ? undefined : picked;
     },
     extensionUri: context.extensionUri,
+    includeUntracked: () => settings().includeUntracked,
+    review: (setup) => commands.review(setup),
     logger,
   });
   const commitActions = new CommitActions({
@@ -1024,7 +1027,10 @@ async function branchCommitsRequest(
   if (worktree === undefined) {
     return undefined;
   }
-  return { repo, request: { cwd: worktree.path, revision: worktree.head ?? 'HEAD', label: worktreeLabel(worktree), against } };
+  return {
+    repo,
+    request: { cwd: worktree.path, revision: worktree.head ?? 'HEAD', label: worktreeLabel(worktree), against, worktree: { root: worktree.path, label: worktreeLabel(worktree) } },
+  };
 }
 
 /**

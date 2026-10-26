@@ -155,7 +155,7 @@ describe('stash menu (Repositories view)', () => {
 
 describe('Show File History on file rows', () => {
   it('is on changed files in Changes, commit files and stash files, and not on other rows', () => {
-    for (const value of ['changedFile.modified', 'changedFile.deleted', 'commitsFile', 'stashFile']) {
+    for (const value of ['changedFile.modified', 'changedFile.deleted', 'commitsFile', 'stashFile', 'uncommittedFile']) {
       expect(shown('gitComparePlus.history.showFile', value)).toBe(true);
     }
     for (const value of ['commit', 'historyCommit', 'stash', ...Object.values(values)]) {
@@ -172,5 +172,14 @@ describe('History view visibility', () => {
     expect(views.find((v) => v.id === 'gitComparePlus.history')?.when).toBe('gitComparePlus.historyShown');
     // Shown last, under the sections that are always there.
     expect(views.map((v) => v.id).at(-1)).toBe('gitComparePlus.history');
+  });
+});
+
+describe('Uncommitted changes row (Commits view)', () => {
+  it('Review Uncommitted Changes is on that row only', () => {
+    expect(shown('gitComparePlus.commits.reviewUncommitted', 'uncommittedGroup')).toBe(true);
+    for (const value of ['commitsCommit', 'uncommittedFile', 'commitsFile', ...Object.values(values)]) {
+      expect(shown('gitComparePlus.commits.reviewUncommitted', value)).toBe(false);
+    }
   });
 });

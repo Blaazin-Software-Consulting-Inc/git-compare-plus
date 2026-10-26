@@ -452,7 +452,7 @@ export class HistoryController implements vscode.Disposable {
  * in a stash. Undefined for anything else (URIs are handled by `fileOf`).
  */
 function fileFromRow(arg: unknown): { root: string; path: string } | undefined {
-  if (isChangesFile(arg)) {
+  if (isChangesFile(arg) || isUncommittedFile(arg)) {
     return { root: arg.result.subject.kind === 'worktree' ? arg.result.subject.root : arg.result.repo.root, path: arg.file.path };
   }
   if (isCommitsFile(arg)) {
@@ -467,6 +467,10 @@ function fileFromRow(arg: unknown): { root: string; path: string } | undefined {
 // Menu arguments arrive untyped; these check which view's row it is.
 function isChangesFile(arg: unknown): arg is Extract<ChangesNode, { kind: 'file' }> {
   return typeof arg === 'object' && arg !== null && 'kind' in arg && arg.kind === 'file' && 'result' in arg && 'file' in arg;
+}
+
+function isUncommittedFile(arg: unknown): arg is Extract<CommitsNode, { kind: 'uncommittedFile' }> {
+  return typeof arg === 'object' && arg !== null && 'kind' in arg && arg.kind === 'uncommittedFile' && 'result' in arg && 'file' in arg;
 }
 
 function isCommitsFile(arg: unknown): arg is Extract<CommitsNode, { kind: 'file' }> {

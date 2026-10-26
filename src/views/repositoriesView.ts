@@ -51,7 +51,8 @@ import { stableSignature } from '../autoRefresh/scheduling';
 import { sortBranches, sortWorktrees } from '../treeOrder';
 import type { BaseSpec, RepoInfo, Subject } from '../comparison';
 import type { GitCli } from '../git/gitCli';
-import type { RefEntry, StashEntry, WorktreeEntry } from '../git/parsers';
+import type { RefEntry, StashEntry, StatusCounts, WorktreeEntry } from '../git/parsers';
+import { uncommittedText, uncommittedTooltip } from '../uncommitted';
 import { stashDescription, stashFiles, stashLabel, stashTooltip, type StashFile } from '../stashes';
 import { changedFileUri, diffBarIcon } from './changesView';
 import { fileLineStatsText } from './lineStatsText';
@@ -71,6 +72,8 @@ interface RepoDetails {
   readonly defaultBranch?: string;
   /** The repo's stashes, newest first (shared by all its worktrees). */
   readonly stashes: readonly StashEntry[];
+  /** Uncommitted paths per worktree path; absent for a worktree whose status could not be read. */
+  readonly uncommitted: ReadonlyMap<string, StatusCounts>;
 }
 
 type GroupKind = 'worktrees' | 'branches' | 'remotes' | 'stashes';
@@ -93,6 +96,8 @@ export interface RepositoriesViewDeps {
   getBase(repo: RepoInfo): BaseSpec | undefined;
   /** Hours after which a repo's last fetch is flagged as stale (setting `gitComparePlus.staleFetchHours`). */
   staleFetchHours(): number;
+  /** Setting `gitComparePlus.includeUntracked`: whether untracked files count as uncommitted. */
+  includeUntracked(): boolean;
   /** Extension root, for the diff-bar icons on stash files. */
   readonly extensionUri: vscode.Uri;
   /** Folders open in this window (workspace folders), to mark "this window" worktrees. */
@@ -309,7 +314,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
         return worktreeItem(node.repo, node.worktree, node.isMain, this.deps.getBase(node.repo), await this.worktreeDate(node.repo, node.worktree), {
           counts: worktreeAheadBehind(counts, node.worktree),
           baseLabel: counts?.baseLabel,
-        }, isOneOf(node.worktree.path, this.deps.windowFolders()));
+        }, isOneOf(node.worktree.path, this.deps.windowFolders()), await this.getUncommitted(node.repo, node.worktree.path));
       }
       case 'branch': {
         const counts = await this.aheadBehindCounts(node.repo);
@@ -371,8 +376,9 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     // Counted against the base the compare button uses, so `↑3` means "3 commits that compare
     // would show". A base change (Set/Clear Comparison Base) reloads the repo to recount.
     const countBase = aheadBehindBase(this.deps.getBase(repo), defaultBranch, worktrees);
-    const [commitDates, aheadBehind] = await Promise.all([
+    const [commitDates, uncommitted, aheadBehind] = await Promise.all([
       this.worktreeCommitDates(git, repo, worktrees),
+      this.uncommittedCounts(git, repo, worktrees),
       countBase === undefined ? undefined : loadAheadBehind(git, repo.root, countBase, refs, worktrees, this.deps.logger),
     ]);
     this.deps.logger.debug('repository details loaded', {
@@ -392,6 +398,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
       worktreeDates: commitDates,
       defaultBranch,
       stashes,
+      uncommitted,
       aheadBehind,
     };
   }
@@ -435,6 +442,29 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
       return branchesNotCheckedOut(details.refs, details.worktrees).map((ref) => ({ kind: 'branch', repo, ref }));
     }
     return details.refs.filter((r) => r.kind === 'remote').map((ref) => ({ kind: 'branch', repo, ref }));
+  }
+
+  // One `git status` per usable worktree, in parallel. Cosmetic like stashes: a worktree whose
+  // status fails (e.g. its folder was just deleted) simply shows no marker (WARN).
+  private async uncommittedCounts(git: GitCli, repo: RepoInfo, worktrees: readonly WorktreeEntry[]): Promise<Map<string, StatusCounts>> {
+    const includeUntracked = this.deps.includeUntracked();
+    const usable = worktrees.filter((w) => !w.bare && !w.prunable);
+    const counts = await Promise.all(
+      usable.map(async (worktree): Promise<[string, StatusCounts] | undefined> => {
+        try {
+          return [worktree.path, await git.statusCounts(worktree.path, includeUntracked)];
+        } catch (error) {
+          this.deps.logger.warn('worktree status unavailable', { function: 'uncommittedCounts', repo: repo.name, worktree: worktree.path, reason: error instanceof Error ? error.message : String(error) });
+          return undefined;
+        }
+      }),
+    );
+    return new Map(counts.filter((entry): entry is [string, StatusCounts] => entry !== undefined));
+  }
+
+  /** A worktree's uncommitted paths at the last load; undefined when unknown. */
+  async getUncommitted(repo: RepoInfo, worktreePath: string): Promise<StatusCounts | undefined> {
+    return (await this.getDetails(repo)).uncommitted.get(worktreePath);
   }
 
   // Stashes are cosmetic next to worktrees and branches: a failure leaves the group empty (WARN)
@@ -523,6 +553,7 @@ function worktreeItem(
   committedAt: number | undefined,
   position: RowAheadBehind,
   inWindow: boolean,
+  uncommitted: StatusCounts | undefined,
 ): vscode.TreeItem {
   const label = worktree.branch ?? `detached @ ${(worktree.head ?? '').slice(0, 7)}`;
   const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
@@ -532,10 +563,11 @@ function worktreeItem(
   const location = isMain ? 'main worktree' : displayPath(repo.root, worktree.path);
   // Age of the latest commit, so the newest-first order is visible.
   const age = committedAt === undefined ? undefined : formatAge(committedAt, Date.now());
-  item.description = [isBase ? 'default Against' : undefined, inWindow ? 'this window' : undefined, aheadBehindText(position.counts), location, age]
+  item.description = [isBase ? 'default Against' : undefined, inWindow ? 'this window' : undefined, aheadBehindText(position.counts), uncommittedText(uncommitted), location, age]
     .filter(Boolean)
     .join(' · ');
-  item.tooltip = withAheadBehindTooltip(`${worktree.path}${inWindow ? '\nOpen in this window.' : '\nOpen… opens it in a new window.'}`, position);
+  const dirty = uncommittedTooltip(uncommitted);
+  item.tooltip = withAheadBehindTooltip(`${worktree.path}${inWindow ? '\nOpen in this window.' : '\nOpen… opens it in a new window.'}${dirty === undefined ? '' : `\n${dirty}`}`, position);
   item.contextValue = `comparable.worktree${isMain ? '.main' : ''}${isBase ? '.base' : ''}`;
   return item;
 }

@@ -370,6 +370,22 @@ describe('GitCli against a real repository', () => {
     expect(result).toMatchObject({ shown: 'ahead', description: '1 commit not on main' });
   });
 
+  it("counts a worktree's uncommitted files by kind, and lists them against its last commit", async () => {
+    const cli = new GitCli('git', recordingLogger());
+    // The feature worktree: edit.txt changed on disk, brand-new.txt untracked.
+    expect(await cli.statusCounts(worktreeRoot, true)).toEqual({ staged: 0, unstaged: 1, untracked: 1, total: 2 });
+    expect(await cli.statusCounts(worktreeRoot, false)).toEqual({ staged: 0, unstaged: 1, untracked: 0, total: 1 });
+    expect((await cli.statusCounts(repoRoot, true)).total).toBe(0);
+
+    // What the Commits view's "Uncommitted changes" row runs: the worktree against its own HEAD.
+    const [result] = await compare({ kind: 'worktree', root: worktreeRoot, label: 'feature', includeUncommitted: true }, { kind: 'ref', ref: 'HEAD', label: 'last commit', refKind: 'commit' }, 'direct');
+    expect(result?.files.map((f) => [f.status, f.path])).toEqual([
+      ['untracked', 'brand-new.txt'],
+      ['modified', 'edit.txt'],
+    ]);
+    expect(result?.commits?.entries).toEqual([]);
+  });
+
   it('counts ahead/behind the same way in one walk and per revision', async () => {
     const cli = new GitCli('git', recordingLogger());
     const mainSha = (await cli.resolveCommit(repoRoot, 'main')) ?? '';

@@ -46,6 +46,8 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 ### Commits
 
+- Worktree rows show uncommitted work (`✎ 3 uncommitted`, staged / unstaged / untracked in the
+  hover), and the Commits view lists a selected worktree's uncommitted changes above its commits.
 - **Commits** view: selecting a worktree or branch lists its commits (what it has that the default
   Against doesn't, or its history); search by message, author, file, changed text or ID, on every
   branch and tag.
@@ -70,7 +72,7 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 - As fast as git itself on large repositories (benchmarked on git/git: a two-release comparison
   in about 150 ms, blame of a 6,800-line file in about 420 ms); the benchmark runs in CI.
-- About 80 KB to download, no runtime dependencies, no account, no telemetry; activates after the
+- About 81 KB to download, no runtime dependencies, no account, no telemetry; activates after the
   editor has started, never during startup. Size and activation budgets are checked in CI on
   macOS, Linux and Windows.
 

@@ -73,6 +73,7 @@ In Cursor, add `--profile <name>` to install into a profile other than Default.
 | `src/blame/blameController.ts`  | Current-line blame: end-of-line note, hover, status bar, hover actions |
 | `src/blame/blameText.ts`        | Wording of the blame note, status text and hover (escaped, with command links) |
 | `src/views/commitDiff.ts`       | Open one commit's changes in a multi-file diff (Commits group, blame)  |
+| `src/uncommitted.ts`            | Wording of a worktree's uncommitted work (row marker, hover)          |
 | `src/stashes.ts`                | A stash's files (tracked + untracked), its wording, the Drop confirmation |
 | `src/branchLocation.ts`         | Where a branch is checked out, and what Open… offers for it            |
 | `src/goTo.ts`                   | Go to… entries, and which worktree the status bar describes           |

@@ -46,6 +46,7 @@ import {
   parseNumstatZ,
   parseRefList,
   parseStashList,
+  parseStatusCounts,
   parseTagList,
   parseWorktreeList,
   type BlameLine,
@@ -55,6 +56,7 @@ import {
   type LineStats,
   type RefEntry,
   type StashEntry,
+  type StatusCounts,
   type TagEntry,
   type WorktreeEntry,
 } from './parsers';
@@ -485,6 +487,15 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
   async uncommittedCount(root: string, includeUntracked: boolean): Promise<number> {
     const untrackedMode = includeUntracked ? 'normal' : 'no';
     return countStatusEntries(await this.run(root, ['status', '--porcelain=v1', '-z', `--untracked-files=${untrackedMode}`]));
+  }
+
+  /**
+   * Uncommitted paths in the worktree at `root`, by kind (staged, unstaged, untracked). Runs with
+   * GIT_OPTIONAL_LOCKS=0 like every command here, so it never takes the index lock.
+   */
+  async statusCounts(root: string, includeUntracked: boolean): Promise<StatusCounts> {
+    const untrackedMode = includeUntracked ? 'normal' : 'no';
+    return parseStatusCounts(await this.run(root, ['status', '--porcelain=v1', '-z', `--untracked-files=${untrackedMode}`]));
   }
 
   /**

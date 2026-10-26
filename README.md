@@ -182,7 +182,11 @@ list branches in the same order.
 default Against. `↑3 ↓12` means 3 commits the Against side doesn't have, and 12 commits on it that
 this row doesn't have. A row level with it shows no arrows; hover for the counts in words. The
 counts follow the default Against: change it and every row recounts. A worktree counts from its
-last commit. With git 2.41 or later, every branch is counted in one git command.
+last commit.
+
+**Uncommitted work:** a worktree with uncommitted files says so on its row (`✎ 3 uncommitted`);
+hover for how many are staged, changed but not staged, and untracked. The counts refresh with the
+repo (after a commit, a branch switch, a fetch, or Refresh). With git 2.41 or later, every branch is counted in one git command.
 Older git (Apple's bundled git can lag behind) counts local branches and detached worktrees one
 by one, and remote branches show no counts.
 
@@ -311,6 +315,11 @@ lines may have moved.
   why: `history · 200+ commits · nothing that origin/main doesn't have`.
 
 <img src="docs/images/4-commits.png" alt="Commits for a selected branch, the newest commit expanded to its files" width="360" align="right">
+
+Selecting a worktree with uncommitted files also puts an **Uncommitted changes · 3 files** row at
+the top: what's on disk but not committed, against its last commit, with the usual badges and line
+counts. Click a file for its diff, or the row's **Review** button to open them in Changes.
+Uncommitted work isn't a commit, so it's never mixed into the commit list.
 
 The history button in the view's title bar switches to the full history, and back. Selecting a repo
 row lists its main worktree. Nothing is switched or opened; it only lists. Selecting several rows
@@ -447,7 +456,7 @@ waits about 1.5 s after you stop typing before it refreshes.
 
 | | Git Compare+ 1.0.0 |
 | --- | --- |
-| Download size | about 80 KB (one 142 KB bundle, no runtime dependencies) |
+| Download size | about 81 KB (one 146 KB bundle, no runtime dependencies) |
 | Startup cost | none: it activates after the editor has finished starting; `activate()` itself takes a few milliseconds |
 | Network | only when you click Fetch; no telemetry, no account |
 | Background work | git runs only for what's on screen: a shown comparison, an open History view, the current line's blame |

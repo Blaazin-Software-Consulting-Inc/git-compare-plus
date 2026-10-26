@@ -511,6 +511,54 @@ export function countStatusEntries(stdout: string): number {
   return count;
 }
 
+/** How many uncommitted paths a worktree has, by kind. A path can be both staged and unstaged. */
+export interface StatusCounts {
+  /** Paths with changes in the index (git add-ed). */
+  readonly staged: number;
+  /** Tracked paths changed on disk but not staged. */
+  readonly unstaged: number;
+  /** Never-added, non-ignored paths. */
+  readonly untracked: number;
+  /** Distinct paths with any uncommitted change. */
+  readonly total: number;
+}
+
+/**
+ * Count `git status --porcelain=v1 -z` entries by kind. Each record is `XY <path>\0`: X is the
+ * index (staged) state, Y the worktree (unstaged) state, `??` untracked. Renames and copies carry
+ * an extra `<origPath>\0` token, skipped as in `countStatusEntries`.
+ */
+export function parseStatusCounts(stdout: string): StatusCounts {
+  const tokens = stdout.split('\0');
+  let staged = 0;
+  let unstaged = 0;
+  let untracked = 0;
+  let total = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const record = tokens[i];
+    if (!record || record.length < 3) {
+      continue;
+    }
+    const x = record[0];
+    const y = record[1];
+    total++;
+    if (x === '?' && y === '?') {
+      untracked++;
+      continue;
+    }
+    if (x !== ' ') {
+      staged++;
+    }
+    if (y !== ' ') {
+      unstaged++;
+    }
+    if (x === 'R' || x === 'C' || y === 'R' || y === 'C') {
+      i++;
+    }
+  }
+  return { staged, unstaged, untracked, total };
+}
+
 /** Split NUL-terminated output (`git ls-files -z`) into its non-empty entries. */
 export function parseNulList(stdout: string): string[] {
   return stdout.split('\0').filter((entry) => entry.length > 0);
