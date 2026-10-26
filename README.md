@@ -234,7 +234,8 @@ worktree").
 #### Git actions (right-click)
 
 Only actions you'd take while reviewing are here. Commit, push, pull, merge and rebase stay in the
-editor's Source Control view.
+editor's Source Control view; **Open in Source Control** takes you there with the worktree you
+right-clicked.
 
 | Action | On | Safety |
 | --- | --- | --- |
@@ -243,6 +244,8 @@ editor's Source Control view.
 | **Create Worktree…** | branch not checked out anywhere, or a remote branch | A remote branch gets a local branch with the same name that tracks it. The suggested folder is `<repo>.worktrees/<branch>` next to the repo. |
 | **Open…** | any branch | See the table above: says what it will do before doing it. |
 | **Switch Main Worktree to This Branch** | branch not checked out anywhere, or a remote branch | Refused while the main worktree has uncommitted changes. Nothing is carried over or stashed for you. (Open… does the same for this window's worktree.) |
+| **Open in Source Control** | worktree | Adds the worktree to the editor's Source Control view and shows it, to commit or push there. Cursor and older VS Code only list repositories inside this window's folders; for a worktree outside them it offers **Add to This Window** (adds the folder to the window) or **Open in New Window** instead. |
+| **Stash Changes…** | worktree with uncommitted changes | Asks whether to stash tracked files only or everything including untracked files (`includeUntracked` picks the first choice), and for an optional name. The worktree's files go back to its last commit; the stash appears under **Stashes**. |
 | **Remove Worktree(s)…** | one or more linked worktrees | Confirmation names each folder and how many uncommitted files would be **permanently deleted**, plus the total. It also warns when a worktree was created by Claude Code. Branches are kept. |
 | **Delete Branch(es)…** | one or more local branches not checked out anywhere | Confirmation lists how many commits each branch has that aren't in the default branch and would be lost, plus the total. |
 

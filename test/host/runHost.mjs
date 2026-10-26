@@ -24,10 +24,17 @@ try {
   writeFileSync(join(workspace, 'a.txt'), 'a\n');
   git('add', '.');
   git('commit', '-q', '-m', 'init');
+  // A linked worktree inside the window's folder but deeper than git's repository scan (depth 1),
+  // so Source Control does not list it until Open in Source Control adds it. Git's API refuses
+  // worktrees outside the window's folders on VS Code 1.90 (see GitActions.openInSourceControl).
+  const linked = join(workspace, 'nested', 'side');
+  writeFileSync(join(workspace, '.git', 'info', 'exclude'), 'nested/\n');
+  git('worktree', 'add', '-q', '-b', 'side', linked);
   await runTests({
     version: engine,
     extensionDevelopmentPath: root,
     extensionTestsPath: join(root, 'test', 'host', 'suite.cjs'),
+    extensionTestsEnv: { HOST_SMOKE_REPO: workspace, HOST_SMOKE_LINKED: linked },
     // Other installed extensions stay out of the measurement; built-ins (vscode.git) still load.
     // A short user-data dir: macOS limits socket paths to 103 characters, and the default one
     // inside .vscode-test/ is longer than that in a deep checkout.

@@ -3,6 +3,7 @@
  * so it needs no test framework inside the editor. Rejecting fails the run.
  */
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const vscode = require('vscode');
 
@@ -24,6 +25,26 @@ exports.run = async function run() {
   assert.equal(typeof activationMs, 'number', 'activate() did not report its duration');
   process.stdout.write(`host smoke: activate() took ${activationMs} ms (budget ${ACTIVATION_BUDGET_MS} ms)\n`);
   assert.ok(activationMs <= ACTIVATION_BUDGET_MS, `activation took ${activationMs} ms, over the ${ACTIVATION_BUDGET_MS} ms budget`);
+
+  // Open in Source Control adds a worktree that Source Control does not list yet to the editor's
+  // own Source Control view, through the git extension's API.
+  const linked = fs.realpathSync(process.env.HOST_SMOKE_LINKED);
+  const repoRoot = fs.realpathSync(process.env.HOST_SMOKE_REPO);
+  const gitApi = vscode.extensions.getExtension('vscode.git').exports.getAPI(1);
+  const isOpen = () => gitApi.repositories.some((r) => fs.realpathSync(r.rootUri.fsPath) === linked);
+  assert.equal(isOpen(), false, 'the linked worktree was already in Source Control');
+  await vscode.commands.executeCommand('gitComparePlus.openInSourceControl', {
+    kind: 'worktree',
+    repo: { name: path.basename(repoRoot), root: repoRoot, commonDir: path.join(repoRoot, '.git') },
+    worktree: { path: linked, branch: 'side', detached: false, bare: false, prunable: false },
+    isMain: false,
+  });
+  // Source Control adds the repository asynchronously after the call returns.
+  for (let waited = 0; !isOpen() && waited < 5000; waited += 100) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(isOpen(), true, 'Open in Source Control did not add the worktree to Source Control');
+  process.stdout.write('host smoke: Open in Source Control added the linked worktree\n');
 
   const registered = new Set(await vscode.commands.getCommands(true));
   const missing = manifest.contributes.commands.map((c) => c.command).filter((command) => !registered.has(command));

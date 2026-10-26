@@ -26,6 +26,11 @@ export interface GitApi extends ObservableGitApi {
   readonly state: 'uninitialized' | 'initialized';
   readonly onDidChangeState: vscode.Event<'uninitialized' | 'initialized'>;
   readonly git: { readonly path: string };
+  /**
+   * Add a repository (or linked worktree) at `root` to the editor's Source Control view
+   * (git extension API v1). Resolves to the repository, or null when git cannot open it there.
+   */
+  openRepository(root: vscode.Uri): Thenable<unknown>;
 }
 
 interface GitExtensionExports {

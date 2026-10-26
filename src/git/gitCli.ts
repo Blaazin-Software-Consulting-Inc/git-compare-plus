@@ -393,6 +393,15 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
   }
 
   /**
+   * Stash the uncommitted changes of the worktree at `root` (`git stash push`), leaving it at its
+   * last commit. Untracked files are included only with `includeUntracked` (`-u`).
+   * @param message - the stash's name; omitted, git names it "WIP on <branch>: …".
+   */
+  async stashPush(root: string, message: string | undefined, includeUntracked: boolean): Promise<void> {
+    await this.run(root, ['stash', 'push', ...(includeUntracked ? ['--include-untracked'] : []), ...(message !== undefined && message.length > 0 ? ['-m', message] : [])]);
+  }
+
+  /**
    * Apply a stash to the worktree at `root`, keeping the stash. Fails (with git's message) on
    * conflicts with the files there; nothing is applied in that case except what git reports.
    */

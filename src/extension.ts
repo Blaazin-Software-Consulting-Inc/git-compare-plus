@@ -140,6 +140,11 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     logger,
     compareWorktree: (repo, worktree) => commands.compareNode({ kind: 'worktree', repo, worktree, isMain: false }, 'stored'),
     windowFolders: () => windowFolders(),
+    openInSourceControl: async (worktreePath) => {
+      const opened = await (await getServices()).api.openRepository(vscode.Uri.file(worktreePath));
+      return opened !== null && opened !== undefined;
+    },
+    includeUntracked: () => settings().includeUntracked,
   });
 
   const goTo = new WorktreeStatus(repositories, actions, () => windowFolders(), logger);
@@ -268,6 +273,8 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
       history.gitChanged();
     }, channel, logger),
     register('gitComparePlus.openBranch', (node?: RepoTreeNode) => actions.openBranch(node), logger),
+    register('gitComparePlus.openInSourceControl', (node?: RepoTreeNode) => actions.openInSourceControl(node), logger),
+    register('gitComparePlus.stash.push', (node?: RepoTreeNode) => actions.stashChanges(node), logger),
     register('gitComparePlus.stash.apply', (node?: RepoTreeNode) => actions.applyStash(node, 'apply'), logger),
     register('gitComparePlus.stash.pop', (node?: RepoTreeNode) => actions.applyStash(node, 'pop'), logger),
     register('gitComparePlus.stash.drop', (node?: RepoTreeNode) => actions.dropStash(node), logger),

@@ -59,6 +59,14 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 - **Stashes** under each repo, with their files (including untracked ones). Open, Apply (keep),
   Pop (apply and remove), and Drop after a confirmation that says what is lost.
+- **Stash Changes…** on a worktree: tracked files only or including untracked files, with an
+  optional name.
+
+### Source Control
+
+- **Open in Source Control** on a worktree adds it to the editor's Source Control view, for
+  committing and pushing there. Where the editor only lists repositories inside the window's
+  folders (Cursor, older VS Code), it offers to add the folder to the window or open it in a new one.
 
 ### Fixes found while taking screenshots
 

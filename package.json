@@ -473,6 +473,18 @@
         "command": "gitComparePlus.commits.openUncommittedFile",
         "title": "Open Change",
         "category": "Git Compare+"
+      },
+      {
+        "command": "gitComparePlus.openInSourceControl",
+        "title": "Open in Source Control",
+        "category": "Git Compare+",
+        "icon": "$(source-control)"
+      },
+      {
+        "command": "gitComparePlus.stash.push",
+        "title": "Stash Changes…",
+        "category": "Git Compare+",
+        "icon": "$(archive)"
       }
     ],
     "menus": {
@@ -828,6 +840,16 @@
           "command": "gitComparePlus.commits.reviewUncommitted",
           "when": "view == gitComparePlus.commits && viewItem =~ /^uncommittedGroup$/",
           "group": "1_review@1"
+        },
+        {
+          "command": "gitComparePlus.openInSourceControl",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.worktree/",
+          "group": "3_open@2"
+        },
+        {
+          "command": "gitComparePlus.stash.push",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.worktree/",
+          "group": "4_git@5"
         }
       ],
       "scm/title": [
@@ -1063,6 +1085,14 @@
         },
         {
           "command": "gitComparePlus.commits.openUncommittedFile",
+          "when": "false"
+        },
+        {
+          "command": "gitComparePlus.openInSourceControl",
+          "when": "false"
+        },
+        {
+          "command": "gitComparePlus.stash.push",
           "when": "false"
         }
       ],

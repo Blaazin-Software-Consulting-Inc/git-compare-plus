@@ -48,6 +48,8 @@ describe('context menu visibility', () => {
     ['gitComparePlus.createBranch', Object.keys(values)],
     ['gitComparePlus.compare', Object.keys(values)],
     ['gitComparePlus.openBranch', ['localBranch', 'localCheckedOut', 'localBase', 'remoteBranch']],
+    ['gitComparePlus.openInSourceControl', ['mainWorktree', 'linkedWorktree', 'linkedWorktreeBase']],
+    ['gitComparePlus.stash.push', ['mainWorktree', 'linkedWorktree', 'linkedWorktreeBase']],
   ] as const)('%s is shown exactly for %j', (command, expected) => {
     const actual = Object.entries(values)
       .filter(([, value]) => shown(command, value))

@@ -59,6 +59,14 @@ export interface GitActionsDeps {
   compareWorktree(repo: RepoInfo, worktree: WorktreeEntry): Promise<void>;
   /** Folders open in this window (workspace folders). */
   windowFolders(): readonly string[];
+  /**
+   * Add a worktree to the editor's Source Control view (git extension API). False when the git
+   * extension declined: Cursor and older VS Code (1.90 does; 1.143 does not) only open a repository outside this
+   * window's folders when `git.openRepositoryInParentFolders` is `always`.
+   */
+  openInSourceControl(worktreePath: string): Promise<boolean>;
+  /** Setting `gitComparePlus.includeUntracked`, the default for Stash Changes…. */
+  includeUntracked(): boolean;
 }
 
 /** Implementations of the git action commands. */
@@ -413,7 +421,7 @@ export class GitActions {
     const blockers = await switchBlockers(git, worktree.path);
     if (blockers > 0) {
       void vscode.window.showWarningMessage(
-        `The ${where} of ${repo.name} has ${blockers} uncommitted change${blockers === 1 ? '' : 's'}. Commit or stash ${blockers === 1 ? 'it' : 'them'} in Source Control first, or create a worktree for the branch instead.`,
+        `The ${where} of ${repo.name} has ${blockers} uncommitted change${blockers === 1 ? '' : 's'}. Commit ${blockers === 1 ? 'it' : 'them'} in Source Control, or right-click the worktree → Stash Changes…, first; or create a worktree for the branch instead.`,
       );
       return;
     }
@@ -432,6 +440,88 @@ export class GitActions {
       throw error;
     }
     this.deps.logger.info('branch switched', { function: 'switchWorktreeTo', repo: repo.name, worktree: worktree.path, target });
+    this.deps.repositories.refreshRepo(repo);
+  }
+
+  /**
+   * "Open in Source Control": make a worktree's changes committable from the editor's own Source
+   * Control view in this window, without opening another window. Commit, push and the rest then
+   * happen there, with everything the editor offers; this extension does not reimplement them.
+   */
+  async openInSourceControl(node: RepoTreeNode | undefined): Promise<void> {
+    if (node?.kind !== 'worktree') {
+      return;
+    }
+    const { repo, worktree } = node;
+    if (await this.deps.openInSourceControl(worktree.path)) {
+      this.deps.logger.info('worktree opened in source control', { function: 'openInSourceControl', repo: repo.name, worktree: worktree.path });
+      await vscode.commands.executeCommand('workbench.view.scm');
+      return;
+    }
+    // The git extension refused (see GitActionsDeps.openInSourceControl): Source Control only
+    // lists repositories inside this window's folders. Offer the two ways that always work.
+    this.deps.logger.warn('source control declined worktree', { function: 'openInSourceControl', repo: repo.name, worktree: worktree.path });
+    const addHere = 'Add to This Window';
+    const openWindow = 'Open in New Window';
+    const picked = await vscode.window.showWarningMessage(
+      `Source Control here only lists repositories inside this window's folders, and ${worktreeName(worktree, repo.root)} is outside them. ` +
+        'Add it to this window as a folder, or open it in its own window.',
+      addHere,
+      openWindow,
+    );
+    if (picked === addHere) {
+      const end = vscode.workspace.workspaceFolders?.length ?? 0;
+      vscode.workspace.updateWorkspaceFolders(end, 0, { uri: vscode.Uri.file(worktree.path) });
+      this.deps.logger.info('worktree added to window', { function: 'openInSourceControl', repo: repo.name, worktree: worktree.path });
+      await vscode.commands.executeCommand('workbench.view.scm');
+    } else if (picked === openWindow) {
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(worktree.path), { forceNewWindow: true });
+    }
+  }
+
+  /**
+   * "Stash Changes…" on a worktree: asks for an optional name and whether to include untracked
+   * files (showing how many of each), then `git stash push` in that worktree. Its files go back to
+   * the last commit; the stash appears under Stashes.
+   */
+  async stashChanges(node: RepoTreeNode | undefined): Promise<void> {
+    if (node?.kind !== 'worktree') {
+      return;
+    }
+    const { repo, worktree } = node;
+    const git = await this.deps.getGit();
+    const counts = await git.statusCounts(worktree.path, true);
+    const tracked = counts.total - counts.untracked;
+    if (counts.total === 0) {
+      void vscode.window.showInformationMessage(`${worktreeName(worktree, repo.root)} has no uncommitted changes to stash.`);
+      return;
+    }
+    const choices = [
+      ...(tracked > 0 ? [{ label: '$(archive) Stash changes to tracked files', description: `${tracked} file${tracked === 1 ? '' : 's'}`, detail: 'Untracked files stay where they are.', includeUntracked: false }] : []),
+      ...(counts.untracked > 0
+        ? [{ label: '$(archive) Stash everything, including untracked files', description: `${counts.total} file${counts.total === 1 ? '' : 's'}`, detail: `Includes ${counts.untracked} untracked file${counts.untracked === 1 ? '' : 's'}.`, includeUntracked: true }]
+        : []),
+    ];
+    // The setting decides which comes first; with only one kind of change there is one choice.
+    const ordered = this.deps.includeUntracked() ? [...choices].reverse() : choices;
+    const picked = ordered.length === 1 ? ordered[0] : await vscode.window.showQuickPick(ordered, { title: `Stash the uncommitted changes in ${worktreeName(worktree, repo.root)}` });
+    if (picked === undefined) {
+      return;
+    }
+    const message = await vscode.window.showInputBox({
+      title: 'Stash name (optional)',
+      prompt: `The files go back to the last commit; the stash appears under Stashes. Leave empty for git's default name.`,
+    });
+    if (message === undefined) {
+      return;
+    }
+    try {
+      await git.stashPush(worktree.path, message.trim(), picked.includeUntracked);
+    } catch (error) {
+      this.deps.logger.error('stash failed', error, { function: 'stashChanges', repo: repo.name, worktree: worktree.path, includeUntracked: picked.includeUntracked });
+      throw error;
+    }
+    this.deps.logger.info('changes stashed', { function: 'stashChanges', repo: repo.name, worktree: worktree.path, includeUntracked: picked.includeUntracked, fileCount: picked.includeUntracked ? counts.total : tracked });
     this.deps.repositories.refreshRepo(repo);
   }
 

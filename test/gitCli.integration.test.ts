@@ -4,7 +4,7 @@
  * exactly as the extension does. Catches format drift that the parser unit tests cannot.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -315,6 +315,31 @@ describe('GitCli against a real repository', () => {
     expect((await subjects(searchArgs({ kind: 'author', text: 'T' }))).length).toBeGreaterThanOrEqual(3);
     expect(await subjects(searchArgs({ kind: 'message', text: 'no such text' }))).toEqual([]);
     expect(await cli.emptyTree(repoRoot)).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it('stashes tracked changes only, or everything including untracked files, with a name', async () => {
+    const cli = new GitCli('git', recordingLogger());
+    const keep = path.join(repoRoot, 'keep.txt');
+    const loose = path.join(repoRoot, 'loose-for-stash.txt');
+    writeFileSync(keep, 'keep\nstash me\n');
+    writeFileSync(loose, 'untracked\n');
+    try {
+      await cli.stashPush(repoRoot, 'tracked only', false);
+      expect(readFileSync(keep, 'utf8')).toBe('keep\n');
+      expect(existsSync(loose)).toBe(true);
+      await cli.stashPush(repoRoot, '', true);
+      expect(existsSync(loose)).toBe(false);
+      const stashes = await cli.stashes(repoRoot);
+      expect(stashes.map((s) => [s.named, s.parents.length > 2])).toEqual([
+        [false, true],
+        [true, false],
+      ]);
+      expect(stashes[1]?.message).toBe('tracked only');
+    } finally {
+      git(repoRoot, 'checkout', '--', 'keep.txt');
+      rmSync(loose, { force: true });
+      git(repoRoot, 'stash', 'clear');
+    }
   });
 
   it('lists, applies, pops and drops stashes, finding stash@{n} by SHA as it shifts', async () => {
