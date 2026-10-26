@@ -17,6 +17,11 @@ account, no sign-in, no upgrade prompts and no telemetry.
 - **Many repos at once.** Works with one repository or a whole multi-root workspace, including
   linked worktrees that aren't open in the window.
 
+![Changes: a worktree reviewed against origin/master, with line counts, diff bars and reviewed checkboxes, and a diff open](docs/images/1-changes.png)
+
+<sub>Screenshots: [expressjs/express](https://github.com/expressjs/express) at v5.1.0, with a demo
+branch, worktree, edits and stash added locally by `npm run screenshots`.</sub>
+
 ## Quick start
 
 1. Click the **Git Compare+** icon in the activity bar.
@@ -55,6 +60,8 @@ Both lists are grouped the same way: *This window* (the worktree open here), *Wo
 *Branches*, *Remote branches*, *Tags*, and *Commits* (search recent commits by message, author or
 ID). You can also type any branch, tag or commit ID. The default branch is preselected for the
 second question.
+
+![The Compare… picker: This window, Worktrees, Branches and Remote branches](docs/images/3-compare-picker.png)
 
 #### The Changes view
 
@@ -148,6 +155,8 @@ staging area are never modified. The only side effect is that git stores unrefer
 the edited files, which `git gc` cleans up later.
 
 ### Repositories, worktrees and branches
+
+<img src="docs/images/2-repositories.png" alt="Repositories: worktrees, other branches with ahead counts, and a stash with its files" width="360" align="right">
 
 **Repositories**: every repo in the window. In a single-repo window it opens already expanded.
 Each section's header says what it holds: Repositories names the repo (or how many), Changes names
@@ -268,6 +277,8 @@ lines.
 History stays on the file you asked for: switching editors doesn't change it, and asking for
 another file replaces it. Its ✕ closes it; it's also closed after a window reload.
 
+![History of lib/response.js, with one version's change open](docs/images/5-history.png)
+
 Every commit row compares in the same ways:
 
 | Action | Shows (this file only) |
@@ -298,6 +309,8 @@ lines may have moved.
   same commits its ↑3 counts), so you see what you'd be reviewing;
 - or, when there's nothing like that (selecting `main` itself, say), its recent history, saying
   why: `history · 200+ commits · nothing that origin/main doesn't have`.
+
+<img src="docs/images/4-commits.png" alt="Commits for a selected branch, the newest commit expanded to its files" width="360" align="right">
 
 The history button in the view's title bar switches to the full history, and back. Selecting a repo
 row lists its main worktree. Nothing is switched or opened; it only lists. Selecting several rows
@@ -348,6 +361,8 @@ saved yet, say `Uncommitted change`. Hover the note for:
 
 The status bar shows the same author and age (`Ada Lovelace, 3 days ago`); click it
 to open the commit.
+
+![Blame at the end of the current line, with its hover: message, Open Commit, Compare with Previous, Compare with Working Tree](docs/images/6-blame.png)
 
 Blame runs once per version of a file and is reused as you move around. While you type, the note
 is hidden until you pause. Files outside git, never-committed files and files over 20,000 lines are
@@ -432,7 +447,7 @@ waits about 1.5 s after you stop typing before it refreshes.
 
 | | Git Compare+ 1.0.0 |
 | --- | --- |
-| Download size | about 79 KB (one 141 KB bundle, no runtime dependencies) |
+| Download size | about 80 KB (one 142 KB bundle, no runtime dependencies) |
 | Startup cost | none: it activates after the editor has finished starting; `activate()` itself takes a few milliseconds |
 | Network | only when you click Fetch; no telemetry, no account |
 | Background work | git runs only for what's on screen: a shown comparison, an open History view, the current line's blame |

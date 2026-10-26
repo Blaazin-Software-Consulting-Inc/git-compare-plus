@@ -142,8 +142,8 @@ export class HistoryController implements vscode.Disposable {
     try {
       const state = mode === 'file' ? await this.fileHistory(root, filePath) : await this.lineHistory(root, filePath, lines ?? { start: 1, end: 1 });
       this.provider.show(state);
-      this.view.title = `History: ${path.posix.basename(filePath)}`;
-      this.view.description = historyDescription(state);
+      // The file goes in the description: VS Code capitalises every word of a view title.
+      this.view.description = `${path.posix.basename(filePath)} · ${historyDescription(state)}`;
       this.view.message = state.truncated ? `Showing the newest ${HISTORY_LIMIT} commits.` : undefined;
     } catch (error) {
       this.deps.logger.warn('history unavailable', { function: 'load', mode, root, path: filePath, lines, reason: error instanceof Error ? error.message : String(error) });

@@ -76,6 +76,8 @@ describe('naming', () => {
   });
 });
 
+const DAY_MS = 86_400_000;
+
 describe('formatAge / isFetchStale', () => {
   const now = Date.UTC(2026, 9, 15, 12);
   it('formats each range', () => {
@@ -85,6 +87,11 @@ describe('formatAge / isFetchStale', () => {
     expect(formatAge(now - 3 * 3_600_000, now)).toBe('3 h ago');
     expect(formatAge(now - 24 * 3_600_000, now)).toBe('1 day ago');
     expect(formatAge(now - 72 * 3_600_000, now)).toBe('3 days ago');
+    expect(formatAge(now - 29 * DAY_MS, now)).toBe('29 days ago');
+    expect(formatAge(now - 30 * DAY_MS, now)).toBe('1 month ago');
+    expect(formatAge(now - 200 * DAY_MS, now)).toBe('6 months ago');
+    expect(formatAge(now - 365 * DAY_MS, now)).toBe('1 year ago');
+    expect(formatAge(now - 4145 * DAY_MS, now)).toBe('11 years ago');
     expect(formatAge(now + 60_000, now)).toBe('just now');
   });
 

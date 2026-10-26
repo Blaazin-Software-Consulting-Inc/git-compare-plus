@@ -1163,6 +1163,7 @@
     "test:host": "node test/host/runHost.mjs",
     "budget": "node scripts/check-budget.mjs",
     "bench": "node scripts/bench.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
     "package": "npm run build:production && vsce package --no-dependencies --out git-compare-plus.vsix"
   },
   "devDependencies": {

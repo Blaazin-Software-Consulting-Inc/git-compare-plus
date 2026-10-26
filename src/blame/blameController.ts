@@ -65,6 +65,8 @@ export class BlameController implements vscode.Disposable {
   private readonly roots = new Map<string, Promise<string | undefined>>();
   private readonly messages = new Map<string, string>();
   private timer: ReturnType<typeof setTimeout> | undefined;
+  // The note on screen, for the hover provider: which document version and line it is on.
+  private shown: { readonly uri: string; readonly version: number; readonly lineIndex: number; readonly line: BlameLine; readonly target: BlameTarget } | undefined;
   private readonly subscriptions: vscode.Disposable[];
 
   constructor(
@@ -90,6 +92,9 @@ export class BlameController implements vscode.Disposable {
         }
       }),
       vscode.workspace.onDidCloseTextDocument((document) => this.cache.delete(document.uri.toString())),
+      // The hover is a provider, not the decoration's hoverMessage: VS Code does not reliably show a
+      // decoration's hover over text drawn after the end of a line, which is where the note is.
+      vscode.languages.registerHoverProvider({ scheme: 'file' }, { provideHover: (document, position) => this.hoverAt(document, position) }),
       ...this.registerCommands(),
     ];
     this.schedule(CURSOR_SETTLE_MS);
@@ -153,12 +158,11 @@ export class BlameController implements vscode.Disposable {
     const now = Date.now();
     if (settings.currentLine) {
       const end = editor.document.lineAt(lineIndex).range.end;
-      const hover = new vscode.MarkdownString(blameHoverMarkdown(line, target, this.messages.get(line.commit.sha), now), true);
-      // Only our own commands may run from the hover's links.
-      hover.isTrusted = { enabledCommands: Object.values(BLAME_COMMANDS) };
-      editor.setDecorations(this.decoration, [{ range: new vscode.Range(end, end), hoverMessage: hover, renderOptions: { after: { contentText: blameAnnotation(line, now) } } }]);
+      editor.setDecorations(this.decoration, [{ range: new vscode.Range(end, end), renderOptions: { after: { contentText: blameAnnotation(line, now) } } }]);
+      this.shown = { uri: editor.document.uri.toString(), version: editor.document.version, lineIndex, line, target };
     } else {
       editor.setDecorations(this.decoration, []);
+      this.shown = undefined;
     }
     if (settings.statusBar) {
       this.statusItem.text = `$(git-commit) ${blameStatusText(line, now)}`;
@@ -168,6 +172,26 @@ export class BlameController implements vscode.Disposable {
     } else {
       this.statusItem.hide();
     }
+  }
+
+  /**
+   * The blame hover, when the mouse is over the note: on the note's line, at or past the end of
+   * the line's text (the editor reports positions over text drawn after a line as its end).
+   * Elsewhere, nothing, so blame never piles onto the language's own hovers.
+   */
+  private hoverAt(document: vscode.TextDocument, position: vscode.Position): vscode.Hover | undefined {
+    const shown = this.shown;
+    if (shown === undefined || shown.uri !== document.uri.toString() || shown.version !== document.version || position.line !== shown.lineIndex) {
+      return undefined;
+    }
+    const end = document.lineAt(position.line).range.end;
+    if (position.character < end.character) {
+      return undefined;
+    }
+    const markdown = new vscode.MarkdownString(blameHoverMarkdown(shown.line, shown.target, this.messages.get(shown.line.commit.sha), Date.now()), true);
+    // Only our own commands may run from the hover's links.
+    markdown.isTrusted = { enabledCommands: Object.values(BLAME_COMMANDS) };
+    return new vscode.Hover(markdown, new vscode.Range(end, end));
   }
 
   // Upgrades the hover from the subject to the full message, once per commit.
@@ -185,6 +209,7 @@ export class BlameController implements vscode.Disposable {
   }
 
   private clear(): void {
+    this.shown = undefined;
     for (const editor of vscode.window.visibleTextEditors) {
       editor.setDecorations(this.decoration, []);
     }

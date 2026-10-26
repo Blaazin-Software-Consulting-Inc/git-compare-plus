@@ -81,7 +81,7 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
       vscode.commands.registerCommand('gitComparePlus.commits.openFile', (node?: CommitsNode) => this.guard('openFile', () => this.openFile(node))),
       vscode.commands.registerCommand('gitComparePlus.commits.clear', () => {
         this.branch = undefined;
-        this.show([], undefined, undefined, false);
+        this.show([], undefined, false);
       }),
       vscode.commands.registerCommand('gitComparePlus.commits.showFullHistory', () => this.guard('showFullHistory', () => this.setBranchMode('history'))),
       vscode.commands.registerCommand('gitComparePlus.commits.showAheadOnly', () => this.guard('showAheadOnly', () => this.setBranchMode('auto'))),
@@ -137,8 +137,7 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     });
     this.show(
       list.commits.map((commit) => ({ repo: selected.repo, root: selected.request.cwd, commit })),
-      `Commits: ${selected.request.label}`,
-      list.description,
+      `${selected.request.label} · ${list.description}`,
       false,
       list.commits.length === 0 ? 'No commits.' : undefined,
       true,
@@ -148,7 +147,7 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
 
   /** Show one commit's details, expanded (Show Commit Details from any commit list). */
   async showCommit(target: CommitTarget): Promise<void> {
-    this.show([target], `Commit ${target.commit.sha.slice(0, 7)}`, commitTitle(target.commit), true);
+    this.show([target], `commit ${commitTitle(target.commit)}`, true);
     await vscode.commands.executeCommand('gitComparePlus.commits.focus');
   }
 
@@ -181,8 +180,7 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     const shown = found.slice(0, SEARCH_LIMIT);
     this.show(
       shown.map((commit) => ({ repo, root: repo.root, commit })),
-      'Search results',
-      searchDescription(query, shown.length, found.length > SEARCH_LIMIT),
+      `search: ${searchDescription(query, shown.length, found.length > SEARCH_LIMIT)}`,
       false,
       shown.length === 0 ? 'No commits matched.' : undefined,
     );
@@ -197,8 +195,12 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     return found;
   }
 
-  /** @param isBranchList - true for a selected branch's commits (keeps the mode toggle). */
-  private show(commits: readonly CommitTarget[], title: string | undefined, description: string | undefined, expandAll: boolean, emptyText?: string, isBranchList = false): void {
+  /**
+   * @param description - what the list is, shown next to the fixed "Commits" title. Names go here,
+   *   not in the title: VS Code capitalises every word of a view title ("Fix/Etag-Weak").
+   * @param isBranchList - true for a selected branch's commits (keeps the mode toggle).
+   */
+  private show(commits: readonly CommitTarget[], description: string | undefined, expandAll: boolean, emptyText?: string, isBranchList = false): void {
     // A search or a commit's details replaces a branch list: the mode toggle no longer applies.
     if (!isBranchList) {
       this.branch = undefined;
@@ -207,7 +209,6 @@ export class CommitsView implements vscode.TreeDataProvider<CommitsNode>, vscode
     this.commits = commits;
     this.expandAll = expandAll;
     this.emptyText = emptyText;
-    this.view.title = title ?? 'Commits';
     this.view.description = description;
     this.changeEmitter.fire(undefined);
   }

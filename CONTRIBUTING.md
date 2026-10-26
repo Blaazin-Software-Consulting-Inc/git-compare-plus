@@ -18,6 +18,8 @@ npm run test:host # downloads VS Code 1.90 into .vscode-test/, activates the ext
                   # and activate() is within its time budget
 npm run generate:icons   # rewrite media/diff-bar/*.svg after changing src/views/diffBar.ts
 npm run generate:icon    # redraw media/icon.png (keep media/icon.svg in step)
+npm run screenshots      # retake docs/images/*.png: a demo scene in expressjs/express
+                         # (.bench/express), a throwaway VS Code, captured over DevTools
 ```
 
 CI (`.github/workflows/ci.yml`) runs the tests, packaging, the budget and the host test on macOS,

@@ -58,11 +58,19 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 - **Stashes** under each repo, with their files (including untracked ones). Open, Apply (keep),
   Pop (apply and remove), and Drop after a confirmation that says what is lost.
 
+### Fixes found while taking screenshots
+
+- Ages past a month read as months or years ("11 years ago", not "4145 days ago").
+- The blame hover comes from a hover provider over the note; VS Code did not show the note's own
+  decoration hover.
+- Branch and file names are no longer shown in section titles, where VS Code capitalises every
+  word ("Fix/Etag-Weak"); they are in the section descriptions instead.
+
 ### Fast and lightweight
 
 - As fast as git itself on large repositories (benchmarked on git/git: a two-release comparison
   in about 150 ms, blame of a 6,800-line file in about 420 ms); the benchmark runs in CI.
-- About 79 KB to download, no runtime dependencies, no account, no telemetry; activates after the
+- About 80 KB to download, no runtime dependencies, no account, no telemetry; activates after the
   editor has started, never during startup. Size and activation budgets are checked in CI on
   macOS, Linux and Windows.
 

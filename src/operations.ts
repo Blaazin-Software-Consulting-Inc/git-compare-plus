@@ -114,7 +114,18 @@ export function formatAge(fetchedAtMs: number | undefined, nowMs: number): strin
     return `${hours} h ago`;
   }
   const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
+  // Past a month, days stop being readable ("4145 days ago"): months, then years, as git does.
+  if (days < 30) {
+    return ago(days, 'day');
+  }
+  if (days < 365) {
+    return ago(Math.floor(days / 30), 'month');
+  }
+  return ago(Math.floor(days / 365), 'year');
+}
+
+function ago(count: number, unit: string): string {
+  return `${count} ${unit}${count === 1 ? '' : 's'} ago`;
 }
 
 /** True when a repo has never been fetched or not within `maxAgeHours`. */
