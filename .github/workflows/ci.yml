@@ -8,6 +8,8 @@ on:
   pull_request:
   # The release workflow runs these same checks on the tagged commit before publishing.
   workflow_call:
+  # Manual re-runs from the Actions tab (e.g. when GitHub missed a push event).
+  workflow_dispatch:
 
 permissions:
   contents: read
