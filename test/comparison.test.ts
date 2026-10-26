@@ -407,3 +407,55 @@ describe('diffSides', () => {
     expect(diffSides(compared(worktree('/wt')), { status: 'deleted', path: 'g.ts', oldPath: 'g.ts' }).right).toEqual({ kind: 'empty' });
   });
 });
+
+describe('branch point (merge-base mode)', () => {
+  const other: BaseSpec = { kind: 'worktree', root: '/ws/svc/.wt/b', label: 'feature-b', includeUncommitted: false };
+
+  it("says when the branch point is the Against side's own tip", async () => {
+    const git = fakePort({ mergeBase: vi.fn(async () => 'sha:origin/main') });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature') }], { kind: 'ref', ref: 'origin/main' }, 'merge-base', options());
+    expect(result?.branchPoint).toEqual({ isAgainstTip: true });
+  });
+
+  it('names the default branch when two worktrees split off it and the Against worktree moved on', async () => {
+    const git = fakePort({
+      mergeBase: vi.fn(async () => 'mb'),
+      resolveCommit: vi.fn(async (cwd: string, revision: string) => (cwd === '/ws/svc/.wt/b' ? 'sha:b-head' : `sha:${revision}`)),
+      isAncestor: vi.fn(async () => true),
+    });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/ws/svc/.wt/a') }], other, 'merge-base', options());
+    expect(git.isAncestor).toHaveBeenCalledWith('/ws/svc/.wt/a', 'mb', 'origin/master');
+    expect(result?.branchPoint).toEqual({ isAgainstTip: false, onDefaultBranch: 'origin/master' });
+  });
+
+  it('does not name the default branch when the branch point is not on it', async () => {
+    const git = fakePort({ isAncestor: vi.fn(async () => false) });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature') }], { kind: 'ref', ref: 'develop' }, 'merge-base', options());
+    expect(result?.branchPoint).toEqual({ isAgainstTip: false, onDefaultBranch: undefined });
+  });
+
+  it('does not check the default branch when it is the Against side', async () => {
+    const git = fakePort();
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature') }], DEFAULT, 'merge-base', options());
+    expect(git.isAncestor).not.toHaveBeenCalled();
+    expect(result?.branchPoint).toEqual({ isAgainstTip: false, onDefaultBranch: undefined });
+  });
+
+  it('is absent in all-differences mode and for a snapshot Against', async () => {
+    const git = fakePort();
+    const [direct] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature') }], other, 'direct', options());
+    const [snapshot] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature') }], { ...other, includeUncommitted: true }, 'merge-base', options());
+    expect(direct?.branchPoint).toBeUndefined();
+    expect(snapshot?.branchPoint).toBeUndefined();
+    expect(git.isAncestor).not.toHaveBeenCalled();
+  });
+
+  it('still compares when it cannot be worked out, with a WARN', async () => {
+    const logger = recordingLogger();
+    const git = fakePort({ isAncestor: vi.fn(async () => Promise.reject(new Error('boom'))) });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature') }], { kind: 'ref', ref: 'develop' }, 'merge-base', { includeUntracked: true, logger });
+    expect(result?.outcome).toBe('compared');
+    expect(result?.branchPoint).toBeUndefined();
+    expect(logger.calls.warn.some(([message]) => message === 'branch point unavailable')).toBe(true);
+  });
+});

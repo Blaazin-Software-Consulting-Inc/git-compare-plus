@@ -35,6 +35,8 @@ export interface CommitActionsDeps {
   showDetails(target: CommitTarget): Promise<void>;
   /** The grouped "Compare it with…" picker. */
   pickAgainst(repo: RepoInfo, reviewing: Subject, title: string): Promise<BaseSpec | undefined>;
+  /** The mode a comparison against a picked Against starts in (againstMode.ts). */
+  modeFor(repo: RepoInfo, base: BaseSpec): CompareMode;
   /** Show a comparison in Changes. */
   review(setup: ComparisonSetup): Promise<void>;
   /** Current settings needed for worktree comparisons. */
@@ -101,7 +103,7 @@ export class CommitActions implements vscode.Disposable {
     const subject = commitSubject(target);
     const base = await this.deps.pickAgainst(target.repo, subject, `Review ${commitTitle(target.commit)} against…`);
     if (base !== undefined) {
-      await this.deps.review({ requests: [{ repo: target.repo, subject }], base, mode: this.deps.settings().mode });
+      await this.deps.review({ requests: [{ repo: target.repo, subject }], base, mode: this.deps.modeFor(target.repo, base) });
     }
   }
 

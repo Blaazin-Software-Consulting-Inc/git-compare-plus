@@ -71,8 +71,14 @@ change that part, and the comparison re-runs:
 ```
 ✎  Reviewing: feature-x    worktree · INCLUDING uncommitted edits          ← click: include / exclude
 ⇄  Against: origin/master  default branch · click to change               ← click: pick something else
-⑂  Showing: changes since branch point · click for all differences        ← click: switch mode
+⑂  Showing: changes since branch point a1b2c3d · the tip of origin/master ← click: switch mode
 ```
+
+The mode row names the branch point (the commit the left side reads) and how it relates to the
+Against side. If the Against side is another worktree or branch whose branch point with yours is
+on the default branch, the row turns into a warning, e.g. `on origin/main, not feature-y's
+latest`: the diff then shows roughly "against origin/main", not against `feature-y`. One click
+switches to all differences.
 
 The Reviewing row has a button to review something else against the same Against side. Both
 side rows have a ⇄ button that swaps them. Branches, tags and
@@ -144,11 +150,15 @@ the diff editor.
 
 **Mode**
 
-- **Changes since branch point** (default): like a pull request. The comparison starts from where
-  your branch split off from the base, so commits added to `main` after that don't show up as
-  changes.
+- **Changes since branch point** (default against the default branch and the repo's default
+  Against): like a pull request. The comparison starts from where your branch split off from the
+  base, so commits added to `main` after that don't show up as changes.
 - **All differences**: every difference between the two sides. This mode is required when the base
-  includes uncommitted edits, because those edits have no branch point.
+  includes uncommitted edits, because those edits have no branch point. It's also where a
+  comparison starts when you pick another worktree, branch or remote branch as the Against side
+  (with **Review Against…**, the Against row or **Compare These Two**): two feature branches
+  usually split off main, so "since branch point" would show them against main instead of
+  against each other. Tags and commits keep the `compareMode` setting.
 
 A snapshot is built from a temporary copy of the worktree's git index. That worktree's files and
 staging area are never modified. The only side effect is that git stores unreferenced copies of
@@ -160,7 +170,7 @@ the edited files, which `git gc` cleans up later.
 
 **Repositories**: every repo in the window. In a single-repo window it opens already expanded.
 Each section's header says what it holds: Repositories names the repo (or how many), Changes names
-both sides (`feature-x ↔ origin/main · 14 files · +320 −45`), and Commits and History name the
+both sides (`feature-x against origin/main · 14 files · +320 −45`), and Commits and History name the
 branch or file they're showing.
 
 ```
@@ -196,6 +206,9 @@ by one, and remote branches show no counts.
   you've changed it. If `origin` is your fork, set `gitComparePlus.remote` to `upstream`; to pick a
   different default branch for one repo, use `gitComparePlus.defaultBranches`.
 - **Right-click → Review Against…**: review that item against anything in the grouped picker.
+- **Compare two worktrees or branches**: select one, Cmd-click (Ctrl-click on Windows/Linux) the
+  other, then right-click → **Compare These Two**. It asks which one you're reviewing ("Review
+  feature-a against feature-b" or the other way round) and shows all differences between them.
 - **Right-click a repo → Change Default Against…**, or **right-click a worktree or branch → Use
   as Default Against**: from then on, the compare button for that repo uses it. That item gets a
   target marker. **Reset Default Against** goes back to the default branch. The choice is

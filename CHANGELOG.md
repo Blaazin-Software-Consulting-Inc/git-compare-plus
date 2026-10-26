@@ -16,6 +16,11 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
   Commits (search recent commits), and accept any typed branch, tag or commit ID.
 - Each repo's **default Against** (its default branch unless changed) is shown on its row
   (`against origin/main`) and used by the one-click compare button.
+- **Compare These Two**: select two worktrees or branches, pick which one you're reviewing, and
+  see all differences between them.
+- Picking another worktree or branch as the Against side starts in **all differences**: since
+  their branch point, two feature branches would really be compared with main. The mode row
+  names the branch point and warns when it is on the default branch rather than the Against side.
 - Fork support: `gitComparePlus.remote` (e.g. `upstream`) and per-repo
   `gitComparePlus.defaultBranches`.
 
@@ -23,8 +28,8 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 - Each branch is listed once: checked-out branches are their worktree's row under Worktrees,
   and **Other Branches** lists the rest; remote branches say where their local copy is.
-- Each sidebar section's header summarises what it shows (e.g. `feature-x ↔ origin/main · 14
-  files` on Changes).
+- Each sidebar section's header summarises what it shows (e.g. `feature-x against origin/main ·
+  14 files` on Changes).
 - **Open…** on a branch says what it will do before doing it: open its worktree in a new window,
   or, for a branch not checked out, switch this window to it (refused with uncommitted changes;
   never stashes) or create a worktree for it.

@@ -207,3 +207,21 @@ describe('Review in Changes (Commits view title bar)', () => {
     expect(pkg.contributes.menus['commandPalette']?.find((e) => e.command === 'gitComparePlus.commits.reviewBranch')?.when).toBe('false');
   });
 });
+
+describe('Compare These Two (Repositories multi-selection)', () => {
+  it('is on worktree and branch rows, not repo rows', () => {
+    for (const value of ['mainWorktree', 'linkedWorktree', 'linkedWorktreeBase', 'localBranch', 'localCheckedOut', 'localBase', 'remoteBranch'] as const) {
+      expect(shown('gitComparePlus.compareSelected', values[value])).toBe(true);
+    }
+    expect(shown('gitComparePlus.compareSelected', values.repo)).toBe(false);
+    expect(shown('gitComparePlus.compareSelected', values.repoWithBase)).toBe(false);
+    expect(shown('gitComparePlus.compareSelected', 'stash')).toBe(false);
+  });
+
+  it('appears only with several rows selected, and not in the Command Palette', () => {
+    const entries = pkg.contributes.menus['view/item/context'].filter((e) => e.command === 'gitComparePlus.compareSelected');
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.every((e) => e.when.includes('listMultiSelection') && e.when.includes('view == gitComparePlus.repositories'))).toBe(true);
+    expect(pkg.contributes.menus['commandPalette']?.find((e) => e.command === 'gitComparePlus.compareSelected')?.when).toBe('false');
+  });
+});

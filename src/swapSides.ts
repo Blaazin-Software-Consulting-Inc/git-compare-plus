@@ -43,7 +43,8 @@ function baseAsSubject(base: BaseSpec, resolvedLabel: string | undefined): Subje
   }
 }
 
-function subjectAsBase(subject: Subject): BaseSpec {
+/** The Against side that shows exactly what `subject` shows (uncommitted edits included or not). */
+export function subjectAsBase(subject: Subject): BaseSpec {
   return subject.kind === 'worktree'
     ? { kind: 'worktree', root: subject.root, label: subject.label, includeUncommitted: subject.includeUncommitted }
     : { kind: 'ref', ref: subject.ref, refKind: subject.refKind, label: subject.label };

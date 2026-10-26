@@ -22,6 +22,12 @@
  *   A base that includes uncommitted edits is a tree, not a commit, so it has no merge base; the
  *   effective mode is then forced to `direct` and reported on the result.
  *
+ * Branch point: in `merge-base` mode the result also says where that left side is (`branchPoint`):
+ * whether it is the Against side's own tip, and, when it is not, whether it is on the repo's
+ * default branch. The second is the case to warn about: two worktrees that both split off main
+ * have a branch point on main, so "against other-worktree" really shows "against main".
+ * Best-effort (WARN): without it the header falls back to the generic wording.
+ *
  * Line stats: each file carries `lines` (+/−) from `git diff --numstat` of the same two sides, or
  * from the file's bytes for untracked files. Best-effort: if they cannot be computed the files are
  * still listed, without counts (logged at WARN), because the file list is what the review needs.
@@ -107,7 +113,21 @@ export interface ComparisonResult {
   readonly files: readonly ChangedFile[];
   /** Commits the comparison covers; undefined when not applicable or unavailable (see module doc). */
   readonly commits?: CommitList;
+  /** Where the branch point is (`merge-base` mode only; see module doc). The SHA is `baseRevision`. */
+  readonly branchPoint?: BranchPoint;
   readonly errorMessage?: string;
+}
+
+/** Where a merge-base comparison's left side sits, relative to the Against side. */
+export interface BranchPoint {
+  /** The branch point is the Against side's tip: the left side IS the Against side. */
+  readonly isAgainstTip: boolean;
+  /**
+   * The repo's default branch (e.g. `origin/main`) when the branch point is on it and the Against
+   * side is something else that has moved on since: the left side is then effectively that
+   * default branch, not the Against side. Undefined otherwise.
+   */
+  readonly onDefaultBranch?: string;
 }
 
 /** Commits of one comparison, newest first. */
@@ -127,6 +147,7 @@ export const COMMIT_LIMIT = 200;
 export interface ComparisonPort extends FingerprintPort {
   defaultBranch(cwd: string): Promise<string | undefined>;
   mergeBase(cwd: string, refA: string, refB: string): Promise<string | undefined>;
+  isAncestor(cwd: string, commit: string, of: string): Promise<boolean>;
   resolveCommit(cwd: string, revision: string): Promise<string | undefined>;
   diffNameStatus(cwd: string, from: string, to?: string): Promise<ChangedFile[]>;
   diffNumstat(cwd: string, from: string, to?: string): Promise<Map<string, LineStats>>;
@@ -253,7 +274,7 @@ async function runComparison(
 
     // Numstat runs alongside name-status: both diff the same sides, and the content diff behind
     // numstat is the slower of the two, so running it afterwards would roughly double the wait.
-    const [files, numstat, commits] = await Promise.all([
+    const [files, numstat, commits, branchPoint] = await Promise.all([
       subjectSide.revision === undefined
         ? workingTreeChanges(git, cwd, baseRevision, options.includeUntracked)
         : git.diffNameStatus(cwd, baseRevision, subjectSide.revision),
@@ -262,8 +283,12 @@ async function runComparison(
       resolvedBase.tree !== undefined
         ? undefined
         : commitList(git, cwd, baseRevision, subjectSide.revision ?? 'HEAD', { repo: repo.name }, options.logger),
+      mode === 'merge-base' && resolvedBase.commitish !== undefined
+        ? describeBranchPoint(git, cwd, resolvedBase.commitish, baseRevision, { repo: repo.name, base }, options.logger)
+        : undefined,
     ]);
     partial.commits = commits;
+    partial.branchPoint = branchPoint;
     const untrackedPaths = files.filter((f) => f.status === 'untracked').map((f) => f.path);
     const logContext = { repo: repo.name, cwd, baseRevision, subjectRevision: subjectSide.revision, fileCount: files.length };
     const [untrackedStats, fingerprinted] = await Promise.all([
@@ -343,6 +368,34 @@ async function leftRevision(
   }
   // In a worktree, HEAD is that worktree's own checkout; for a branch subject use the branch.
   return git.mergeBase(cwd, commitish, subject.kind === 'worktree' ? 'HEAD' : subject.ref);
+}
+
+/**
+ * Where the branch point `branchPoint` sits relative to `againstCommitish` (see BranchPoint).
+ * Best-effort: on failure the comparison is still shown, with the generic mode wording (WARN).
+ */
+async function describeBranchPoint(
+  git: ComparisonPort,
+  cwd: string,
+  againstCommitish: string,
+  branchPoint: string,
+  logContext: Record<string, unknown>,
+  logger: Logger,
+): Promise<BranchPoint | undefined> {
+  try {
+    const [againstTip, defaultBranch] = await Promise.all([git.resolveCommit(cwd, againstCommitish), git.defaultBranch(cwd)]);
+    if (againstTip === branchPoint) {
+      return { isAgainstTip: true };
+    }
+    // Only worth saying when the Against side is not the default branch itself (then "on main"
+    // is the expected, PR-style case and carries no news).
+    const defaultTip = defaultBranch === undefined || defaultBranch === againstCommitish ? undefined : await git.resolveCommit(cwd, defaultBranch);
+    const onDefault = defaultBranch !== undefined && defaultTip !== undefined && defaultTip !== againstTip && (await git.isAncestor(cwd, branchPoint, defaultBranch));
+    return { isAgainstTip: false, onDefaultBranch: onDefault ? defaultBranch : undefined };
+  } catch (error) {
+    logger.warn('branch point unavailable', { function: 'describeBranchPoint', ...logContext, cwd, againstCommitish, branchPoint, reason: error instanceof Error ? error.message : String(error) });
+    return undefined;
+  }
 }
 
 async function workingTreeChanges(git: ComparisonPort, cwd: string, baseRevision: string, includeUntracked: boolean): Promise<ChangedFile[]> {

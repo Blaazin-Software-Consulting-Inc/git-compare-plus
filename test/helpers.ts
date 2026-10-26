@@ -24,7 +24,8 @@ export function repo(name: string): RepoInfo {
 }
 
 /**
- * A port where every repo has `origin/master`, merge base `mb`, every revision resolves to
+ * A port where every repo has `origin/master`, merge base `mb` (on no branch: isAncestor is
+ * false), every revision resolves to
  * `sha:<rev>`, snapshots are `tree:<root>`, nothing is uncommitted, and there are no changes
  * (so no line stats either).
  */
@@ -32,6 +33,7 @@ export function fakePort(overrides: Partial<ComparisonPort> = {}): { [K in keyof
   return {
     defaultBranch: vi.fn(async () => 'origin/master'),
     mergeBase: vi.fn(async () => 'mb'),
+    isAncestor: vi.fn(async () => false),
     resolveCommit: vi.fn(async (_cwd: string, revision: string) => `sha:${revision}`),
     diffNameStatus: vi.fn(async () => []),
     diffNumstat: vi.fn(async () => new Map()),

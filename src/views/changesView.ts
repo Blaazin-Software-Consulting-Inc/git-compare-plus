@@ -328,7 +328,7 @@ function resultItem(result: ComparisonResult, reviewedCount: number): vscode.Tre
   const hasFiles = result.files.length > 0;
   const item = new vscode.TreeItem(result.repo.name, hasFiles ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
   item.id = `result:${result.repo.commonDir}:${subjectKey(result)}`;
-  const comparedTo = `${result.subject.label} ↔ ${result.baseLabel ?? '?'}`;
+  const comparedTo = `${result.subject.label} against ${result.baseLabel ?? '?'}`;
   switch (result.outcome) {
     case 'compared':
       item.iconPath = new vscode.ThemeIcon('repo');

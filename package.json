@@ -121,6 +121,12 @@
         "category": "Git Compare+"
       },
       {
+        "command": "gitComparePlus.compareSelected",
+        "title": "Compare These Two",
+        "category": "Git Compare+",
+        "icon": "$(git-compare)"
+      },
+      {
         "command": "gitComparePlus.setBase",
         "title": "Use as Default Against",
         "category": "Git Compare+",
@@ -678,6 +684,11 @@
           "group": "1_compare@2"
         },
         {
+          "command": "gitComparePlus.compareSelected",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.(worktree|branch)/ && listMultiSelection",
+          "group": "1_compare@0"
+        },
+        {
           "command": "gitComparePlus.setBase",
           "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.(worktree|branch)/ && viewItem =~ /^(?!.*\\.base$)/",
           "group": "2_base@1"
@@ -1108,6 +1119,10 @@
         },
         {
           "command": "gitComparePlus.commits.reviewBranch",
+          "when": "false"
+        },
+        {
+          "command": "gitComparePlus.compareSelected",
           "when": "false"
         }
       ],

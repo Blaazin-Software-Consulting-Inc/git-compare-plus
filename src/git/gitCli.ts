@@ -189,6 +189,24 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
   }
 
   /**
+   * `git merge-base --is-ancestor commit of`: whether `commit` is in `of`'s history (a commit is
+   * its own ancestor).
+   * @returns false when it is not (exit 1) or either revision does not exist (exit 128). Other
+   *   failures throw.
+   */
+  async isAncestor(cwd: string, commit: string, of: string): Promise<boolean> {
+    try {
+      await this.run(cwd, ['merge-base', '--is-ancestor', commit, of]);
+      return true;
+    } catch (error) {
+      if (error instanceof GitCommandError && (error.details.exitCode === 1 || error.details.exitCode === 128)) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  /**
    * `git merge-base a b`.
    * @returns the commit SHA, or `undefined` when either ref does not exist (exit 128) or the
    *   histories are unrelated (exit 1). Other failures throw.

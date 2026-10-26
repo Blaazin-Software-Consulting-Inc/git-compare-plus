@@ -1,13 +1,17 @@
 /**
  * Git Compare+ — extension entry point.
  *
- * Adds an activity-bar container with two views:
+ * Adds an activity-bar container with these views:
  *   - Repositories: every repo in the window (one or many) with its worktrees and branches.
- *     Inline button: compare with the repo's comparison base (default branch unless the user set
- *     one with "Set as Comparison Base"). Context menu: Compare With…, Set/Clear Comparison Base.
- *   - Changes: three header rows stating exactly what is compared (subject incl./excl. uncommitted
- *     edits, base, mode), each clickable to change it; then the changed files. Clicking a file
- *     opens the diff; "Open All Changes" opens every file in one multi-file diff.
+ *     Inline button: Review Against Default (the repo's default Against: its default branch unless
+ *     set with "Use as Default Against"). Context menu: Review Against…, Use as / Reset Default
+ *     Against, and, with two rows selected, Compare These Two (compareTwo.ts). Selecting a row
+ *     lists its commits in Commits.
+ *   - Changes: three header rows stating exactly what is compared (Reviewing incl./excl.
+ *     uncommitted edits, Against, mode with its branch point), each clickable to change it; then
+ *     the changed files. Clicking a file opens the diff; "Open All Changes" opens every file in
+ *     one multi-file diff. A picked worktree or branch starts in "all differences" (againstMode.ts).
+ *   - Commits and History (commits/, history/).
  *
  * Also contributes "Compare All Repos With Default Branch" (every repo's main worktree at once).
  *
@@ -52,6 +56,8 @@ import { groupReviewToggles } from './review/reviewToggles';
 import type { BaseFetchInfo, ComparisonSetup } from './views/changesHeader';
 import { sideChoices, type SideRole, type SideValue } from './sideChoices';
 import { swapSides } from './swapSides';
+import { modeForAgainst } from './againstMode';
+import { compareTwoChoices } from './compareTwo';
 import { pickSide } from './views/sidePicker';
 import { WorktreeStatus } from './views/worktreeStatus';
 import { ChangesProvider, type ChangesLayout, type ChangesNode } from './views/changesView';
@@ -178,6 +184,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     resolve: (node) => resolveCommitTarget(node, repoFor),
     showDetails: (target) => commitsView.showCommit(target),
     pickAgainst: (repo, reviewing, title) => commands.pickAgainst(repo, reviewing, title),
+    modeFor: (repo, base) => commands.modeFor(repo, base),
     review: (setup) => commands.review(setup),
     settings: () => settings(),
     logger,
@@ -225,6 +232,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     register('gitComparePlus.compareAll', () => commands.compareAll(), logger),
     register('gitComparePlus.compare', (node?: RepoTreeNode) => commands.compareNode(node, 'stored'), logger),
     register('gitComparePlus.compareWith', (node?: RepoTreeNode) => commands.compareNode(node, 'pick'), logger),
+    register('gitComparePlus.compareSelected', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => commands.compareSelected(node, selection), logger),
     register('gitComparePlus.setBase', (node: RepoTreeNode) => commands.setBase(node), logger),
     register('gitComparePlus.clearBase', (node: RepoTreeNode) => commands.clearBase(node), logger),
     register('gitComparePlus.openWorktree', (node: RepoTreeNode) => commands.openWorktree(node), logger),
@@ -559,10 +567,11 @@ class CompareCommands {
       return;
     }
     if (isSameSide(target.subject, baseSpec)) {
-      void vscode.window.showInformationMessage(`${target.subject.label} is this repo's default Against, so there is nothing to compare. Right-click → Compare With… to pick something else.`);
+      void vscode.window.showInformationMessage(`${target.subject.label} is this repo's default Against, so there is nothing to compare. Right-click → Review Against… to pick something else.`);
       return;
     }
-    await this.run({ requests: [target], base: baseSpec, mode });
+    // The compare button keeps the setting; a picked worktree or branch starts with all differences.
+    await this.run({ requests: [target], base: baseSpec, mode: base === 'stored' ? mode : this.modeFor(target.repo, baseSpec) });
   }
 
   /**
@@ -588,7 +597,42 @@ class CompareCommands {
       return;
     }
     this.logger.info('comparison picked', { function: 'compareTwo', repo: repo.name, subject, base });
-    await this.run({ requests: [{ repo, subject }], base, mode: settings().mode });
+    await this.run({ requests: [{ repo, subject }], base, mode: this.modeFor(repo, base) });
+  }
+
+  /**
+   * "Compare These Two" on two selected worktrees or branches: asks which way round, then shows
+   * all differences between them (compareTwo.ts).
+   * @param selection - every selected row (VS Code passes it with a multi-selection).
+   */
+  async compareSelected(node: RepoTreeNode | undefined, selection: readonly RepoTreeNode[] | undefined): Promise<void> {
+    const rows = selection ?? (node === undefined ? [] : [node]);
+    const { includeUncommitted } = settings();
+    const [first, second, ...more] = rows.map((row) => toComparisonTarget(row, undefined, includeUncommitted));
+    if (first === undefined || second === undefined || more.length > 0 || rows.some((row) => row.kind !== 'worktree' && row.kind !== 'branch')) {
+      void vscode.window.showInformationMessage('Select exactly two worktrees or branches (Cmd-click or Ctrl-click the second), then right-click → Compare These Two.');
+      return;
+    }
+    const outcome = compareTwoChoices(first, second);
+    if ('reason' in outcome) {
+      void vscode.window.showInformationMessage(outcome.reason);
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(
+      outcome.choices.map((choice) => ({ label: choice.label, detail: choice.detail, setup: choice.setup })),
+      { title: 'Compare These Two: which one are you reviewing?' },
+    );
+    // Undefined = dismissed.
+    if (picked === undefined) {
+      return;
+    }
+    this.logger.info('pair comparison picked', { function: 'compareSelected', repo: first.repo.name, subject: picked.setup.requests[0]?.subject, base: picked.setup.base });
+    await this.run(picked.setup);
+  }
+
+  /** The mode a comparison against a picked Against starts in (againstMode.ts). */
+  modeFor(repo: RepoInfo, base: BaseSpec): CompareMode {
+    return modeForAgainst(base, this.bases.get(repo.commonDir), settings().mode);
   }
 
   /** Header "Reviewing" row → Change: pick what to review instead, keeping the Against side. */
@@ -810,8 +854,10 @@ class CompareCommands {
     const only = state.setup.requests.length === 1 ? state.setup.requests[0] : undefined;
     const base =
       only !== undefined ? await this.pickAgainst(only.repo, only.subject, `Review ${only.subject.label} against…`) : await this.pickBaseAcrossRepos(state.setup.requests);
+    // Dismissed when undefined. One repo: a picked worktree or branch starts with all
+    // differences (againstMode.ts); across repos the shared Against keeps the current mode.
     if (base !== undefined) {
-      await this.run({ ...state.setup, base });
+      await this.run({ ...state.setup, base, mode: only !== undefined ? this.modeFor(only.repo, base) : state.setup.mode });
     }
   }
 

@@ -104,6 +104,38 @@ describe('mode row', () => {
     expect(header(wt(true), { kind: 'default' }, {}, 'direct').modeRow).toMatchObject({ label: 'Showing: all differences' });
   });
 
+  const other: BaseSpec = { kind: 'worktree', root: '/o', label: 'feature-y', includeUncommitted: false };
+  const sha = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+
+  it('names the branch point and warns when it is on the default branch, not the Against side', () => {
+    const { modeRow } = header(wt(true), other, { baseLabel: 'feature-y', baseRevision: sha, branchPoint: { isAgainstTip: false, onDefaultBranch: 'origin/main' } });
+    expect(modeRow).toMatchObject({
+      label: 'Showing: changes since branch point a1b2c3d',
+      description: "on origin/main, not feature-y's latest · click for all differences",
+      icon: 'warning',
+      warning: true,
+      command: 'gitComparePlus.toggleMode',
+    });
+    expect(modeRow?.tooltip).toContain('roughly "against origin/main", not against feature-y');
+  });
+
+  it('says when the branch point is the tip of the Against side', () => {
+    const { modeRow } = header(wt(true), { kind: 'default' }, { baseRevision: sha, branchPoint: { isAgainstTip: true } });
+    expect(modeRow).toMatchObject({ label: 'Showing: changes since branch point a1b2c3d', description: 'the tip of origin/master · click for all differences', warning: false });
+  });
+
+  it('otherwise says where it split from the Against side', () => {
+    const { modeRow } = header(wt(true), { kind: 'default' }, { baseRevision: sha, branchPoint: { isAgainstTip: false } });
+    expect(modeRow).toMatchObject({ description: 'where it split from origin/master · click for all differences', icon: 'git-merge', warning: false });
+  });
+
+  it('keeps the generic wording for several repos or without branch point details', () => {
+    const point = { baseRevision: sha, branchPoint: { isAgainstTip: false, onDefaultBranch: 'origin/main' } };
+    const setup: ComparisonSetup = { requests: [{ repo: repo('a'), subject: wt(true) }, { repo: repo('b'), subject: wt(true) }], base: other, mode: 'merge-base' };
+    expect(describeHeader(setup, [result(wt(true), point), result(wt(true), point)])[2]).toMatchObject({ label: 'Showing: changes since branch point', warning: false });
+    expect(header(wt(true), other, { baseRevision: sha }).modeRow).toMatchObject({ label: 'Showing: changes since branch point', description: 'click for all differences' });
+  });
+
   it('explains why direct is forced for a base with uncommitted edits', () => {
     const { modeRow } = header(wt(true), { kind: 'worktree', root: '/o', label: 'o', includeUncommitted: true }, {}, 'merge-base');
     expect(modeRow).toMatchObject({ label: 'Showing: all differences', description: 'required: the base includes uncommitted edits' });
@@ -127,13 +159,13 @@ describe('stale fetch warning on the base row', () => {
 describe('sidesSummary (Changes section header)', () => {
   it('names both sides of a one-repo comparison', () => {
     const setup: ComparisonSetup = { requests: [{ repo: repo('svc'), subject: wt(true) }], base: { kind: 'default' }, mode: 'merge-base' };
-    expect(sidesSummary(setup, [result(wt(true))])).toBe('feature-x ↔ origin/master');
+    expect(sidesSummary(setup, [result(wt(true))])).toBe('feature-x against origin/master');
   });
 
   it('uses a ref or worktree base by its label', () => {
     const setup = (base: BaseSpec): ComparisonSetup => ({ requests: [{ repo: repo('svc'), subject: wt(true) }], base, mode: 'direct' });
-    expect(sidesSummary(setup({ kind: 'ref', ref: 'abc123', label: 'abc123 Fix', refKind: 'commit' }), [])).toBe('feature-x ↔ abc123 Fix');
-    expect(sidesSummary(setup({ kind: 'worktree', root: '/w', label: 'main', includeUncommitted: true }), [])).toBe('feature-x ↔ main');
+    expect(sidesSummary(setup({ kind: 'ref', ref: 'abc123', label: 'abc123 Fix', refKind: 'commit' }), [])).toBe('feature-x against abc123 Fix');
+    expect(sidesSummary(setup({ kind: 'worktree', root: '/w', label: 'main', includeUncommitted: true }), [])).toBe('feature-x against main');
   });
 
   it('counts repos, and says "default branches" when they differ', () => {
@@ -145,6 +177,6 @@ describe('sidesSummary (Changes section header)', () => {
       base: { kind: 'default' },
       mode: 'merge-base',
     };
-    expect(sidesSummary(setup, [result(wt(true)), result(wt(true), { baseLabel: 'origin/main' })])).toBe('2 repos ↔ default branches');
+    expect(sidesSummary(setup, [result(wt(true)), result(wt(true), { baseLabel: 'origin/main' })])).toBe('2 repos against default branches');
   });
 });

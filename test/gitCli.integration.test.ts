@@ -169,6 +169,10 @@ describe('GitCli against a real repository', () => {
     expect(mergeBase).toMatch(/^[0-9a-f]{40}$/);
     expect(await cli.show(worktreeRoot, mergeBase ?? '', 'old-name.txt')).toBe('rename me\nline2\nline3\n');
     expect(await cli.mergeBase(repoRoot, 'does-not-exist', 'HEAD')).toBeUndefined();
+    // The branch point is in main's history; the worktree's own HEAD (a later commit) is not.
+    expect(await cli.isAncestor(worktreeRoot, mergeBase ?? '', 'main')).toBe(true);
+    expect(await cli.isAncestor(worktreeRoot, 'HEAD', 'main')).toBe(false);
+    expect(await cli.isAncestor(repoRoot, 'does-not-exist', 'main')).toBe(false);
   });
 
   it('uses the configured remote and per-repo overrides for the default branch', async () => {

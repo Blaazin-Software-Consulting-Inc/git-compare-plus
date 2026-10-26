@@ -4,11 +4,15 @@
  *
  *   Reviewing: feature-x     worktree · INCLUDING uncommitted edits         (click: toggle)
  *   Against: origin/master   default branch · click to change               (click: pick a side)
- *   Showing: changes since branch point · click for all differences         (click: toggle mode)
+ *   Showing: changes since branch point a1b2c3d · on origin/main, not feature-y's latest  (click: toggle mode)
  *
  * The two side names are used everywhere in the UI: "Reviewing" is what changed (the RIGHT side
  * of every diff), "Against" is what it is compared with (the LEFT side). Both rows carry an
  * inline ⇄ button that swaps them (swapSides.ts).
+ *
+ * The mode row names the branch point when one repo is compared, and flags it when it is on the
+ * default branch while the Against side is something else (comparison.ts BranchPoint): the left
+ * side is then effectively the default branch, not what the Against row names.
  *
  * Uncommitted edits must never be silently missing, so when a side is "committed only" and the
  * worktree HAS uncommitted files, the row says how many are NOT included and is flagged as a warning.
@@ -47,7 +51,8 @@ export interface BaseFetchInfo {
 
 /**
  * One-line summary of the two sides for the view's title bar, so the section header itself says
- * what Changes is showing: `feature-x ↔ origin/main`, or `3 repos ↔ default branches`.
+ * what Changes is showing: `feature-x against origin/main`, or `3 repos against default branches`.
+ * "against", not an arrow: an arrow does not say which side is which.
  */
 export function sidesSummary(setup: ComparisonSetup, results: readonly ComparisonResult[]): string {
   const single = setup.requests.length === 1 ? setup.requests[0] : undefined;
@@ -61,12 +66,12 @@ export function sidesSummary(setup: ComparisonSetup, results: readonly Compariso
       : setup.base.kind === 'ref'
         ? (setup.base.label ?? setup.base.ref)
         : setup.base.label;
-  return `${reviewing} ↔ ${against}`;
+  return `${reviewing} against ${against}`;
 }
 
 /** Build the header rows for a comparison and its results. */
 export function describeHeader(setup: ComparisonSetup, results: readonly ComparisonResult[], baseFetch?: BaseFetchInfo): HeaderRow[] {
-  return [subjectRow(setup, results), withFetchWarning(baseRow(setup, results), baseFetch), modeRow(setup)];
+  return [subjectRow(setup, results), withFetchWarning(baseRow(setup, results), baseFetch), modeRow(setup, results)];
 }
 
 // A stale remote base silently skews every comparison (new commits on origin are missing), so it
@@ -175,7 +180,7 @@ function baseRow(setup: ComparisonSetup, results: readonly ComparisonResult[]): 
   }
 }
 
-function modeRow(setup: ComparisonSetup): HeaderRow {
+function modeRow(setup: ComparisonSetup, results: readonly ComparisonResult[]): HeaderRow {
   if (baseForcesDirect(setup.base)) {
     return {
       role: 'mode',
@@ -187,25 +192,67 @@ function modeRow(setup: ComparisonSetup): HeaderRow {
       command: 'gitComparePlus.toggleMode',
     };
   }
-  return setup.mode === 'merge-base'
-    ? {
-        role: 'mode',
-        label: 'Showing: changes since branch point',
-        description: 'click for all differences',
-        tooltip: 'Like a pull request: compared with where the branch split off, so later commits on the base are not shown.',
-        icon: 'git-merge',
-        warning: false,
-        command: 'gitComparePlus.toggleMode',
-      }
-    : {
-        role: 'mode',
-        label: 'Showing: all differences',
-        description: 'click for changes since branch point',
-        tooltip: 'Every difference between the two sides, including commits on the base the subject does not have.',
-        icon: 'arrow-both',
-        warning: false,
-        command: 'gitComparePlus.toggleMode',
-      };
+  if (setup.mode === 'merge-base') {
+    return branchPointRow(results.length === 1 ? results[0] : undefined);
+  }
+  return {
+    role: 'mode',
+    label: 'Showing: all differences',
+    description: 'click for changes since branch point',
+    tooltip: 'Every difference between the two sides, including commits on the base the subject does not have.',
+    icon: 'arrow-both',
+    warning: false,
+    command: 'gitComparePlus.toggleMode',
+  };
+}
+
+const SINCE_BRANCH_POINT = 'Like a pull request: compared with where the branch split off, so later commits on the base are not shown.';
+
+/**
+ * "Showing: changes since branch point", naming the branch point for a one-repo comparison (see
+ * module doc). `result` is undefined for several repos (each has its own branch point) or before
+ * a result exists; the row then keeps the generic wording.
+ */
+function branchPointRow(result: ComparisonResult | undefined): HeaderRow {
+  const common = { role: 'mode' as const, command: 'gitComparePlus.toggleMode' as const };
+  const point = result?.branchPoint;
+  const sha = result?.baseRevision?.slice(0, 7);
+  if (result === undefined || point === undefined || sha === undefined) {
+    return { ...common, label: 'Showing: changes since branch point', description: 'click for all differences', tooltip: SINCE_BRANCH_POINT, icon: 'git-merge', warning: false };
+  }
+  const against = result.baseLabel ?? 'the Against side';
+  const label = `Showing: changes since branch point ${sha}`;
+  if (point.isAgainstTip) {
+    return {
+      ...common,
+      label,
+      description: `the tip of ${against} · click for all differences`,
+      tooltip: `${SINCE_BRANCH_POINT}\nHere the branch point is ${against} itself, so both modes show the same thing.`,
+      icon: 'git-merge',
+      warning: false,
+    };
+  }
+  if (point.onDefaultBranch !== undefined) {
+    // The trap: two worktrees that split off main are "compared" with a commit on main.
+    return {
+      ...common,
+      label,
+      description: `on ${point.onDefaultBranch}, not ${against}'s latest · click for all differences`,
+      tooltip:
+        `The left side is ${sha}, where the two histories split, and it is on ${point.onDefaultBranch}. ${against}'s own commits after that are not on the left side, ` +
+        `so this shows roughly "against ${point.onDefaultBranch}", not against ${against}.\nClick for all differences to compare with ${against} itself.`,
+      icon: 'warning',
+      warning: true,
+    };
+  }
+  return {
+    ...common,
+    label,
+    description: `where it split from ${against} · click for all differences`,
+    tooltip: `${SINCE_BRANCH_POINT}\nThe left side is ${sha}, where it split from ${against}.`,
+    icon: 'git-merge',
+    warning: false,
+  };
 }
 
 // Every "Against" tooltip starts by saying which side of the diff it is.

@@ -1,5 +1,5 @@
 /**
- * treeOrder — display order for branches and worktrees (Repositories view, Compare With… picker).
+ * treeOrder — display order for branches and worktrees (Repositories view, Review Against… picker).
  *
  * Rule (user request): the integration branch first, then everything else newest first.
  *   1. Pinned: the repo's default branch (from `origin/HEAD`), then `main`, then `master`.
