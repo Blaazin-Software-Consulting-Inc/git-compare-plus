@@ -186,25 +186,37 @@ describe('Uncommitted changes row (Commits view)', () => {
   });
 });
 
-describe('Review in Changes (Commits view title bar)', () => {
-  const entry = pkg.contributes.menus['view/title']?.find((e) => e.command === 'gitComparePlus.commits.reviewBranch');
-  // The when clause's regex over gitComparePlus.commitsBranchMode, which commitsView.ts sets to the
-  // list mode while a selected worktree or branch is listed and to '' otherwise (search, details).
-  const modeRegex = new RegExp(/commitsBranchMode =~ \/((?:\\\/|[^/])+)\//.exec(entry?.when ?? '')?.[1] ?? '^$never');
+describe('Review in Changes (removed: a click on a row now shows it in Changes)', () => {
+  it('is no longer contributed', () => {
+    expect(pkg.contributes.commands.some((c) => c.command === 'gitComparePlus.commits.reviewBranch')).toBe(false);
+  });
+});
 
-  it('is in the Commits title bar while a selected worktree or branch is listed, in either mode', () => {
-    expect(entry?.when).toContain('view == gitComparePlus.commits');
-    expect(modeRegex.test('auto')).toBe(true);
-    expect(modeRegex.test('history')).toBe(true);
+describe('Comparing with something other than the default Against', () => {
+  const inline = (view: string) => pkg.contributes.menus['view/item/context'].filter((e) => e.group?.startsWith('inline') && e.when.includes(`view == ${view}`));
+
+  it('has a Review Against… button on every comparable row, after the compare button', () => {
+    const entry = inline('gitComparePlus.repositories').find((e) => e.command === 'gitComparePlus.compareWith');
+    expect(entry?.group).toBe('inline@2');
+    expect(shown('gitComparePlus.compareWith', values.linkedWorktree)).toBe(true);
+    expect(shown('gitComparePlus.compareWith', values.remoteBranch)).toBe(true);
+    expect(pkg.contributes.commands.find((c) => c.command === 'gitComparePlus.compareWith')?.icon).toBeDefined();
   });
 
-  it('is hidden for search results, commit details and an empty view (mode unset or empty)', () => {
-    expect(modeRegex.test('')).toBe(false);
-    expect(modeRegex.test('undefined')).toBe(false);
+  it('offers Use as Against on worktree and branch rows only while Changes shows a comparison, one row at a time', () => {
+    const entry = pkg.contributes.menus['view/item/context'].find((e) => e.command === 'gitComparePlus.useAsAgainst');
+    expect(entry?.when).toContain('gitComparePlus.hasComparison');
+    expect(entry?.when).toContain('!listMultiSelection');
+    expect(shown('gitComparePlus.useAsAgainst', values.localBranch)).toBe(true);
+    expect(shown('gitComparePlus.useAsAgainst', values.linkedWorktree)).toBe(true);
+    expect(shown('gitComparePlus.useAsAgainst', values.repo)).toBe(false);
+    expect(pkg.contributes.menus['commandPalette']?.find((e) => e.command === 'gitComparePlus.useAsAgainst')?.when).toBe('false');
   });
 
-  it('is not in the Command Palette, where there is no selection to review', () => {
-    expect(pkg.contributes.menus['commandPalette']?.find((e) => e.command === 'gitComparePlus.commits.reviewBranch')?.when).toBe('false');
+  it("puts a pick button on the Changes Against row, like the Reviewing row's", () => {
+    const pick = inline('gitComparePlus.changes').find((e) => e.command === 'gitComparePlus.changeBase');
+    expect(pick?.group).toBe('inline@1');
+    expect(pick?.when).toContain('header\\.base');
   });
 });
 

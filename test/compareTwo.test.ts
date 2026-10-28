@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Subject } from '../src/comparison';
-import { compareTwoChoices, type PairSide } from '../src/compareTwo';
+import { compareTwoChoices, useAsAgainst, type PairSide } from '../src/compareTwo';
+import type { ComparisonSetup } from '../src/views/changesHeader';
 import { repo } from './helpers';
 
 const svc = repo('svc');
@@ -49,5 +50,41 @@ describe('compareTwoChoices', () => {
   it('refuses the same worktree or branch twice', () => {
     expect(compareTwoChoices(branchC, branchC)).toEqual({ reason: expect.stringContaining('Both rows are feature-c') });
     expect(compareTwoChoices(worktreeA, { ...worktreeA })).toEqual({ reason: expect.stringContaining('Both rows are feature-a') });
+  });
+});
+
+describe('useAsAgainst', () => {
+  const web = repo('web');
+  const shown: ComparisonSetup = { requests: [{ repo: svc, subject: worktreeA.subject }], base: { kind: 'default' }, mode: 'merge-base' };
+  const pickedMode = () => 'direct' as const;
+
+  it("makes the row the Against side of what Changes shows, keeping what is reviewed", () => {
+    const outcome = useAsAgainst(shown, branchC, pickedMode);
+    expect(outcome).toEqual({
+      setup: { requests: shown.requests, base: { kind: 'ref', ref: 'feature-c', label: 'feature-c', refKind: 'branch' }, mode: 'direct' },
+    });
+  });
+
+  it("keeps a worktree row's uncommitted choice on the Against side", () => {
+    const outcome = useAsAgainst(shown, worktreeB, pickedMode);
+    expect('setup' in outcome && outcome.setup.base).toEqual({ kind: 'worktree', root: '/ws/svc/.wt/b', label: 'feature-b', includeUncommitted: false });
+  });
+
+  it("starts in the mode againstMode picks for that Against", () => {
+    const modeFor = vi.fn(() => 'merge-base' as const);
+    const outcome = useAsAgainst(shown, branchC, modeFor);
+    expect(modeFor).toHaveBeenCalledWith(svc, { kind: 'ref', ref: 'feature-c', label: 'feature-c', refKind: 'branch' });
+    expect('setup' in outcome && outcome.setup.mode).toBe('merge-base');
+  });
+
+  it("narrows a several-repo comparison to the row's repo", () => {
+    const both: ComparisonSetup = { ...shown, requests: [...shown.requests, { repo: web, subject: { kind: 'worktree', root: '/ws/web', label: 'main', includeUncommitted: true } }] };
+    const outcome = useAsAgainst(both, branchC, pickedMode);
+    expect('setup' in outcome && outcome.setup.requests.map((r) => r.repo.name)).toEqual(['svc']);
+  });
+
+  it('refuses a row from a repo Changes is not reviewing, or the row being reviewed', () => {
+    expect(useAsAgainst(shown, side(branchC.subject, web), pickedMode)).toEqual({ reason: expect.stringContaining('Changes is reviewing svc, not web') });
+    expect(useAsAgainst(shown, worktreeA, pickedMode)).toEqual({ reason: expect.stringContaining('feature-a is what Changes is reviewing') });
   });
 });

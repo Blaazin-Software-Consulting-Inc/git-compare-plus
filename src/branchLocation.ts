@@ -16,9 +16,9 @@
  * A remote branch (`origin/x`) lives wherever its local branch `x` does; opening it when `x` does
  * not exist yet creates `x` tracking `origin/x`.
  *
- * Clicking a row and its compare button also do different things (clickHint): a click only lists
- * the row's commits in Commits, a cheap preview; the compare button replaces the comparison in
- * Changes, which holds a review in progress, so it is never done by a plain click.
+ * A click on a row reviews it in Changes against the repo's default Against and lists its commits
+ * (clickHint says so in each row's hover, with the ways to pick another Against). Reviewed marks
+ * survive switching: they are tied to file content, not to the comparison (reviewStore.ts).
  *
  * Pure (no `vscode` import); unit-tested in test/branchLocation.test.ts.
  */
@@ -132,12 +132,12 @@ export function switchTargetFor(worktrees: readonly WorktreeEntry[], windowFolde
 }
 
 /**
- * The hover line that says what clicking a worktree or branch row does, and what its compare
- * button does instead.
- * @param againstLabel - what the compare button compares with (the repo's default Against, e.g.
- *   `origin/main`); undefined when not known yet, worded generically.
+ * Last line of a worktree or branch row's hover: what a click does, and what to use for anything
+ * other than the repo's default Against.
+ * @param againstLabel - the repo's default Against (e.g. `origin/main`); undefined when not known
+ *   yet, worded generically.
  */
 export function clickHint(againstLabel: string | undefined): string {
   const against = againstLabel ?? "the repo's default Against";
-  return `Click to list its commits in Commits. The compare button reviews its changes in Changes, against ${against}.`;
+  return `Click to review it in Changes against ${against} and list its commits in Commits. To compare it with something else: the Review Against… button, or right-click another row → Use as Against.`;
 }

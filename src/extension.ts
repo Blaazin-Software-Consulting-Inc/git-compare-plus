@@ -57,7 +57,7 @@ import type { BaseFetchInfo, ComparisonSetup } from './views/changesHeader';
 import { sideChoices, type SideRole, type SideValue } from './sideChoices';
 import { swapSides } from './swapSides';
 import { modeForAgainst } from './againstMode';
-import { compareTwoChoices } from './compareTwo';
+import { compareTwoChoices, useAsAgainst } from './compareTwo';
 import { pickSide } from './views/sidePicker';
 import { WorktreeStatus } from './views/worktreeStatus';
 import { ChangesProvider, type ChangesLayout, type ChangesNode } from './views/changesView';
@@ -190,7 +190,8 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     logger,
   });
 
-  // Selecting a worktree or branch lists its commits in the Commits view (once arrowing stops).
+  // Selecting a worktree or branch (or a repo: its main worktree) lists its commits in Commits and
+  // shows it in Changes against the repo's default Against, once arrowing stops.
   let selectionTimer: ReturnType<typeof setTimeout> | undefined;
   const followSelection = repositoriesView.onDidChangeSelection((event) => {
     if (selectionTimer !== undefined) {
@@ -203,9 +204,12 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     }
     selectionTimer = setTimeout(() => {
       void branchCommitsRequest(only, repositories, bases).then(
-        (request) => (request === undefined ? undefined : commitsView.showBranch(request.repo, request.request, () => commands.compareNode(only, 'stored'))),
+        (request) => (request === undefined ? undefined : commitsView.showBranch(request.repo, request.request)),
         (error: unknown) =>
           logger.warn('branch commits unavailable', { function: 'followSelection', reason: error instanceof Error ? error.message : String(error) }),
+      );
+      void commands.showSelected(only).catch((error: unknown) =>
+        logger.warn('selected row comparison unavailable', { function: 'followSelection', reason: error instanceof Error ? error.message : String(error) }),
       );
     }, SELECTION_SETTLE_MS);
   });
@@ -233,6 +237,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     register('gitComparePlus.compare', (node?: RepoTreeNode) => commands.compareNode(node, 'stored'), logger),
     register('gitComparePlus.compareWith', (node?: RepoTreeNode) => commands.compareNode(node, 'pick'), logger),
     register('gitComparePlus.compareSelected', (node?: RepoTreeNode, selection?: RepoTreeNode[]) => commands.compareSelected(node, selection), logger),
+    register('gitComparePlus.useAsAgainst', (node?: RepoTreeNode) => commands.useAsAgainst(node), logger),
     register('gitComparePlus.setBase', (node: RepoTreeNode) => commands.setBase(node), logger),
     register('gitComparePlus.clearBase', (node: RepoTreeNode) => commands.clearBase(node), logger),
     register('gitComparePlus.openWorktree', (node: RepoTreeNode) => commands.openWorktree(node), logger),
@@ -532,6 +537,10 @@ interface BasePickItem extends vscode.QuickPickItem {
 
 /** Command implementations. State lives in the views and the base store. */
 class CompareCommands {
+  // Bumped by every row click and every explicit comparison; a click's result is shown only if
+  // nothing newer started while it was being compared.
+  private selectionTicket = 0;
+
   constructor(
     private readonly getGit: () => Promise<GitCli>,
     private readonly repositories: RepositoriesProvider,
@@ -556,6 +565,32 @@ class CompareCommands {
       }),
     );
     await this.run({ requests, base: { kind: 'default' }, mode });
+  }
+
+  /**
+   * A click on a Repositories row: show that worktree or branch (a repo row: its main worktree) in
+   * Changes against the repo's default Against, as the compare button does. Unlike the button it
+   * leaves focus in Repositories (arrowing through rows keeps working) and shows no popups: the
+   * default Against's own row, and rows that cannot be compared, leave Changes as it is.
+   * A newer click, or any comparison started meanwhile, wins over this one (selectionTicket).
+   */
+  async showSelected(node: RepoTreeNode): Promise<void> {
+    const ticket = ++this.selectionTicket;
+    const git = await this.getGit();
+    const { includeUncommitted, mode } = settings();
+    const mainBranch = node.kind === 'repo' ? (await git.worktrees(node.repo.root))[0]?.branch : undefined;
+    const target = toComparisonTarget(node, mainBranch, includeUncommitted);
+    const base = target === undefined ? undefined : (this.bases.get(target.repo.commonDir) ?? { kind: 'default' as const });
+    if (target === undefined || base === undefined || isSameSide(target.subject, base)) {
+      return;
+    }
+    const setup: ComparisonSetup = { requests: [target], base, mode };
+    const results = await this.compute(setup);
+    if (ticket !== this.selectionTicket) {
+      return;
+    }
+    this.logger.info('selected row shown in changes', { function: 'showSelected', repo: target.repo.name, subject: target.subject.label, base });
+    this.changes.show({ setup, results, baseFetch: await this.baseFetchInfo(results) });
   }
 
   /**
@@ -645,6 +680,33 @@ class CompareCommands {
     }
     this.logger.info('pair comparison picked', { function: 'compareSelected', repo: first.repo.name, subject: picked.setup.requests[0]?.subject, base: picked.setup.base });
     await this.run(picked.setup);
+  }
+
+  /**
+   * Right-click → "Use as Against" on a worktree or branch row: make it the Against side of the
+   * comparison Changes is showing, for that comparison only (the repo's default Against is not
+   * changed). Click feature-a, right-click feature-b → feature-a against feature-b. A worktree
+   * Against follows the `includeUncommitted` setting, as Compare These Two does. When Changes
+   * spans several repos, the comparison narrows to the row's repo: the Against is a branch or
+   * worktree of that repo only.
+   */
+  async useAsAgainst(node: RepoTreeNode | undefined): Promise<void> {
+    const state = this.changes.current();
+    if (state === undefined) {
+      void vscode.window.showInformationMessage('Nothing is in Changes yet. Click a worktree or branch to review it, then right-click another → Use as Against.');
+      return;
+    }
+    const against = node === undefined || (node.kind !== 'worktree' && node.kind !== 'branch') ? undefined : toComparisonTarget(node, undefined, settings().includeUncommitted);
+    if (against === undefined) {
+      return;
+    }
+    const outcome = useAsAgainst(state.setup, against, (repo, base) => this.modeFor(repo, base));
+    if ('reason' in outcome) {
+      void vscode.window.showInformationMessage(outcome.reason);
+      return;
+    }
+    this.logger.info('against picked from row', { function: 'useAsAgainst', repo: against.repo.name, base: outcome.setup.base });
+    await this.run(outcome.setup);
   }
 
   /** The mode a comparison against a picked Against starts in (againstMode.ts). */
@@ -917,6 +979,8 @@ class CompareCommands {
   }
 
   private async run(setup: ComparisonSetup): Promise<void> {
+    // An explicit comparison outranks a row click still being compared (showSelected).
+    this.selectionTicket++;
     const results = await this.compute(setup);
     this.changes.show({ setup, results, baseFetch: await this.baseFetchInfo(results) });
     await vscode.commands.executeCommand('gitComparePlus.changes.focus');

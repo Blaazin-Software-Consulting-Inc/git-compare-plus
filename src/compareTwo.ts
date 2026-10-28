@@ -8,9 +8,12 @@
  * againstMode.ts describes. Each side keeps what its row stands for: a worktree is its files on
  * disk or its last commit, per the `includeUncommitted` setting, on both sides alike.
  *
+ * Also "Use as Against" (`useAsAgainst`): a right-clicked row becomes the Against side of the
+ * comparison already in Changes, the other way to compare two rows without changing a default.
+ *
  * Pure; unit-tested in test/compareTwo.test.ts. extension.ts shows the choices as a quick pick.
  */
-import type { RepoInfo, Subject } from './comparison';
+import type { BaseSpec, CompareMode, RepoInfo, Subject } from './comparison';
 import { subjectAsBase } from './swapSides';
 import type { ComparisonSetup } from './views/changesHeader';
 
@@ -59,4 +62,28 @@ function sideText(subject: Subject): string {
 
 function sameSide(a: Subject, b: Subject): boolean {
   return a.kind === 'worktree' ? b.kind === 'worktree' && a.root === b.root : b.kind === 'ref' && a.ref === b.ref;
+}
+
+/**
+ * "Use as Against": the comparison on display with `row` as its Against side, for that comparison
+ * only. Requests from other repos are dropped (the Against belongs to `row`'s repo).
+ * @param shown - the comparison Changes is showing.
+ * @param modeFor - the mode to start in against `base` (againstMode.ts).
+ * @returns the new setup, or why it cannot be built (shown to the user as is).
+ */
+export function useAsAgainst(
+  shown: ComparisonSetup,
+  row: PairSide,
+  modeFor: (repo: RepoInfo, base: BaseSpec) => CompareMode,
+): { readonly setup: ComparisonSetup } | { readonly reason: string } {
+  const requests = shown.requests.filter((r) => r.repo.commonDir === row.repo.commonDir);
+  if (requests.length === 0) {
+    const reviewing = [...new Set(shown.requests.map((r) => r.repo.name))].join(', ');
+    return { reason: `Changes is reviewing ${reviewing}, not ${row.repo.name}. Click a worktree or branch of ${row.repo.name} first, then right-click another → Use as Against.` };
+  }
+  if (requests.some((r) => sameSide(r.subject, row.subject))) {
+    return { reason: `${row.subject.label} is what Changes is reviewing. Right-click a different worktree or branch → Use as Against.` };
+  }
+  const base = subjectAsBase(row.subject);
+  return { setup: { requests, base, mode: modeFor(row.repo, base) } };
 }

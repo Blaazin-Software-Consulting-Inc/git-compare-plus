@@ -118,13 +118,20 @@
       {
         "command": "gitComparePlus.compareWith",
         "title": "Review Against…",
-        "category": "Git Compare+"
+        "category": "Git Compare+",
+        "icon": "$(list-selection)"
       },
       {
         "command": "gitComparePlus.compareSelected",
         "title": "Compare These Two",
         "category": "Git Compare+",
         "icon": "$(git-compare)"
+      },
+      {
+        "command": "gitComparePlus.useAsAgainst",
+        "title": "Use as Against",
+        "category": "Git Compare+",
+        "icon": "$(target)"
       },
       {
         "command": "gitComparePlus.setBase",
@@ -233,7 +240,7 @@
         "command": "gitComparePlus.changeBase",
         "title": "Change What It Is Compared Against…",
         "category": "Git Compare+",
-        "icon": "$(git-compare)"
+        "icon": "$(list-selection)"
       },
       {
         "command": "gitComparePlus.toggleUncommitted",
@@ -464,12 +471,6 @@
         "icon": "$(git-compare)"
       },
       {
-        "command": "gitComparePlus.commits.reviewBranch",
-        "title": "Review in Changes",
-        "category": "Git Compare+",
-        "icon": "$(git-compare)"
-      },
-      {
         "command": "gitComparePlus.history.close",
         "title": "Close History",
         "category": "Git Compare+",
@@ -602,11 +603,6 @@
           "group": "navigation@0"
         },
         {
-          "command": "gitComparePlus.commits.reviewBranch",
-          "when": "view == gitComparePlus.commits && gitComparePlus.commitsBranchMode =~ /^(auto|history)$/",
-          "group": "navigation@0"
-        },
-        {
           "command": "gitComparePlus.history.close",
           "when": "view == gitComparePlus.history",
           "group": "navigation@9"
@@ -616,6 +612,11 @@
         {
           "command": "gitComparePlus.changeSubject",
           "when": "view == gitComparePlus.changes && viewItem =~ /^header\\.subject$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitComparePlus.changeBase",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^header\\.base$/",
           "group": "inline@1"
         },
         {
@@ -631,7 +632,7 @@
         {
           "command": "gitComparePlus.openBranch",
           "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.branch/",
-          "group": "inline@2"
+          "group": "inline@3"
         },
         {
           "command": "gitComparePlus.openBranch",
@@ -669,9 +670,14 @@
           "group": "inline@1"
         },
         {
+          "command": "gitComparePlus.compareWith",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable/",
+          "group": "inline@2"
+        },
+        {
           "command": "gitComparePlus.openWorktree",
           "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.worktree(\\.base)?$/",
-          "group": "inline@2"
+          "group": "inline@3"
         },
         {
           "command": "gitComparePlus.compare",
@@ -687,6 +693,11 @@
           "command": "gitComparePlus.compareSelected",
           "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.(worktree|branch)/ && listMultiSelection",
           "group": "1_compare@0"
+        },
+        {
+          "command": "gitComparePlus.useAsAgainst",
+          "when": "view == gitComparePlus.repositories && viewItem =~ /^comparable\\.(worktree|branch)/ && gitComparePlus.hasComparison && !listMultiSelection",
+          "group": "1_compare@3"
         },
         {
           "command": "gitComparePlus.setBase",
@@ -1118,11 +1129,11 @@
           "when": "false"
         },
         {
-          "command": "gitComparePlus.commits.reviewBranch",
+          "command": "gitComparePlus.compareSelected",
           "when": "false"
         },
         {
-          "command": "gitComparePlus.compareSelected",
+          "command": "gitComparePlus.useAsAgainst",
           "when": "false"
         }
       ],

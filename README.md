@@ -30,8 +30,9 @@ branch, worktree, edits and stash added locally by `npm run screenshots`.</sub>
    is preselected).
 3. Click a file in **Changes** to see its diff. Tick its checkbox once you've reviewed it.
 
-To review a branch or worktree against the default branch in one click, hover its row in
-Repositories and click its compare button.
+To review a branch or worktree against the default branch in one click, click its row in
+Repositories. To compare it with another branch or worktree instead, right-click that other row →
+**Use as Against**.
 
 ## Requirements
 
@@ -70,7 +71,7 @@ change that part, and the comparison re-runs:
 
 ```
 ✎  Reviewing: feature-x    worktree · INCLUDING uncommitted edits          ← click: include / exclude
-⇄  Against: origin/master  default branch · click to change               ← click: pick something else
+⇄  Against: origin/master  default branch · click to change               ← click or its pick button: something else
 ⑂  Showing: changes since branch point a1b2c3d · the tip of origin/master ← click: switch mode
 ```
 
@@ -205,12 +206,21 @@ while it is: edits in worktrees the editor's Source Control doesn't track (such 
 Older git (Apple's bundled git can lag behind) counts local branches and detached worktrees one
 by one, and remote branches show no counts.
 
-- **Compare button** (hover over a repo, worktree or branch): review it against the
-  repo's **default Against**. Every repo row says what that is (`against origin/main`). It's the
+- **Click** a repo, worktree or branch row: Changes reviews it against the repo's **default
+  Against**, and Commits lists its commits (a repo row stands for its main worktree). Arrowing
+  through rows keeps the focus in Repositories; each view updates once you stop. Selecting several
+  rows (to delete them, or for Compare These Two) updates neither.
+- **Compare button** (hover over a row): the same as a click, and it brings Changes into view.
+  The repo's **default Against** Every repo row says what that is (`against origin/main`). It's the
   repo's default branch (`origin/HEAD`, which is `master` or `main` depending on the repo) unless
   you've changed it. If `origin` is your fork, set `gitComparePlus.remote` to `upstream`; to pick a
   different default branch for one repo, use `gitComparePlus.defaultBranches`.
-- **Right-click → Review Against…**: review that item against anything in the grouped picker.
+- **Review Against… button** (next to the compare button), or right-click → **Review Against…**:
+  review that item against anything in the grouped picker.
+- **Right-click another worktree or branch → Use as Against**: it becomes the Against side of the
+  comparison in Changes, for that comparison only (the default Against stays as it is). Click
+  `feature-a`, right-click `feature-b` → **Use as Against**, and Changes shows `feature-a against
+  feature-b`, with all differences.
 - **Compare two worktrees or branches**: select one, Cmd-click (Ctrl-click on Windows/Linux) the
   other, then right-click → **Compare These Two**. It asks which one you're reviewing ("Review
   feature-a against feature-b" or the other way round) and shows all differences between them.
@@ -219,9 +229,6 @@ by one, and remote branches show no counts.
   target marker. **Reset Default Against** goes back to the default branch. The choice is
   saved per workspace.
 - **Right-click a worktree → Open Worktree in New Window**.
-- **Select** a worktree or branch to list its commits in the **Commits** view (see below). A click
-  only lists; it never replaces the comparison in Changes, which may hold a review in progress.
-  The row's compare button does that (each row's hover says so).
 - **Title bar**: **Compare All Repos** compares every repo's main worktree with its own default
   branch in one go; **Fetch All Repos** fetches every repo.
 
@@ -346,12 +353,9 @@ the top: what's on disk but not committed, against its last commit, with the usu
 counts. Click a file for its diff, or the row's **Review** button to open them in Changes.
 Uncommitted work isn't a commit, so it's never mixed into the commit list.
 
-The history button in the view's title bar switches to the full history, and back. **Review in
-Changes** (the compare button next to it) opens the listed worktree or branch in Changes against
-the repo's default Against, the same as the row's own compare button, for when you have scanned
-its commits and want their changes. Selecting a repo row lists its main worktree. Selecting only
-lists: nothing is switched, opened or compared until you ask. Selecting several rows (to delete
-them) leaves the list alone.
+The history button in the view's title bar switches to the full history, and back. Selecting a repo
+row lists its main worktree. Nothing is switched or opened by a selection. Selecting several rows
+(to delete them) leaves the list alone.
 
 The view also has **Search Commits…** (search button in its title bar). Choose what to search by,
 then type:

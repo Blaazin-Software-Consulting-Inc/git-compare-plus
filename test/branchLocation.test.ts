@@ -79,11 +79,13 @@ describe('switchTargetFor', () => {
 });
 
 describe('clickHint', () => {
-  it('says a click lists commits and the compare button reviews in Changes, naming the Against', () => {
-    expect(clickHint('origin/main')).toBe('Click to list its commits in Commits. The compare button reviews its changes in Changes, against origin/main.');
+  it('says a click reviews it in Changes against the named Against, and how to pick another', () => {
+    expect(clickHint('origin/main')).toBe(
+      'Click to review it in Changes against origin/main and list its commits in Commits. To compare it with something else: the Review Against… button, or right-click another row → Use as Against.',
+    );
   });
 
   it("falls back to the repo's default Against when it is not known yet", () => {
-    expect(clickHint(undefined)).toContain("against the repo's default Against.");
+    expect(clickHint(undefined)).toContain("against the repo's default Against and list");
   });
 });

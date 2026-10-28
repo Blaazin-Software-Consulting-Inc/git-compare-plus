@@ -15,7 +15,11 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
   pickers are grouped the same way: This window, Worktrees, Branches, Remote branches, Tags, and
   Commits (search recent commits), and accept any typed branch, tag or commit ID.
 - Each repo's **default Against** (its default branch unless changed) is shown on its row
-  (`against origin/main`) and used by the one-click compare button.
+  (`against origin/main`). Clicking a worktree or branch row reviews it against that in Changes
+  (and lists its commits in Commits); the row's compare button does the same.
+- Against something else: a **Review Against…** button on each row, right-click another row →
+  **Use as Against** (for the comparison in Changes only), or the pick button on the Changes
+  Against row.
 - **Compare These Two**: select two worktrees or branches, pick which one you're reviewing, and
   see all differences between them.
 - Picking another worktree or branch as the Against side starts in **all differences**: since
@@ -58,9 +62,7 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
   its commits.
 - **Commits** view: selecting a worktree or branch lists its commits (what it has that the default
   Against doesn't, or its history); search by message, author, file, changed text or ID, on every
-  branch and tag. Its **Review in Changes** button opens the listed worktree or branch in Changes;
-  a click on a row only lists (each row's hover says what a click and the compare button do).
-  Commits expand to their author, parents and changed files.
+  branch and tag. Commits expand to their author, parents and changed files.
 - The same commit actions everywhere a commit is listed: Review This Commit, Review Changes Since,
   Review Against…, Select / Review Against Selected, Compare These Two, Show Details, Copy ID.
 
