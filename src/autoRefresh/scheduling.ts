@@ -7,7 +7,9 @@
  *   - KeyedDebouncer: one action per key after `delayMs` of quiet (per repo).
  *   - CoalescingRunner: one async task after `delayMs` of quiet; triggers that arrive while the
  *     task runs are folded into exactly one follow-up run, so the result reflects the latest
- *     state without ever running two in parallel.
+ *     state without ever running two in parallel. It also stops a feedback loop: when the task
+ *     itself causes a trigger (seen in Cursor: Changes re-ran every 1.6 s for hours, each run
+ *     finding nothing new), the follow-ups are dropped after MAX_ECHOES (see `run`).
  *
  * Pure (timers injectable); unit-tested with fake timers in test/scheduling.test.ts.
  */
@@ -56,26 +58,45 @@ export class KeyedDebouncer<K> {
   }
 }
 
+// Follow-up runs allowed in a row when each was triggered during a run that found nothing new.
+// Three is past any real burst (a save, then a formatter's save) yet stops a loop within seconds.
+const MAX_ECHOES = 3;
+
+/** Optional CoalescingRunner settings. */
+export interface CoalescingRunnerOptions {
+  /** Injectable for tests. */
+  readonly timers?: Timers;
+  /** Called once each time a feedback loop is detected and its follow-ups start being dropped. */
+  readonly onFeedbackStopped?: (echoes: number) => void;
+}
+
 /**
  * Debounced async task that never overlaps itself.
  * State: idle → (schedule) waiting → (delay elapses) running → idle, or → waiting again when a
- * trigger arrived during the run.
+ * trigger arrived during the run (unless that is a feedback loop: see `run`).
  */
 export class CoalescingRunner {
   private timer: unknown;
   private running = false;
   private rerunRequested = false;
   private disposed = false;
+  // Consecutive follow-ups that were triggered during a run which found nothing new.
+  private echoes = 0;
+  private readonly timers: Timers;
 
   /**
+   * @param task - resolves `false` when it ran but found nothing new (used to detect a feedback
+   *   loop); `true` or nothing otherwise.
    * @param onError - receives a task failure; the runner keeps working afterwards.
    */
   constructor(
     private readonly delayMs: number,
-    private readonly task: () => Promise<void>,
+    private readonly task: () => Promise<boolean | void>,
     private readonly onError: (error: unknown) => void,
-    private readonly timers: Timers = realTimers,
-  ) {}
+    private readonly options: CoalescingRunnerOptions = {},
+  ) {
+    this.timers = options.timers ?? realTimers;
+  }
 
   /** Request a run after `delayMs` of quiet. */
   schedule(): void {
@@ -101,17 +122,37 @@ export class CoalescingRunner {
     }
   }
 
+  /**
+   * Runs the task, then the one follow-up if triggers arrived meanwhile. Feedback guard: a trigger
+   * that arrives DURING a run which then finds nothing new may have been caused by the run itself
+   * (its git commands touching files a watcher reports). After MAX_ECHOES such follow-ups in a row
+   * they are dropped; triggers that arrive while idle still run, and any run that finds a change
+   * ends the streak. Cost: a real edit that lands mid-run during a loop waits for the next trigger.
+   */
   private async run(): Promise<void> {
     this.timer = undefined;
     this.running = true;
+    let changed: boolean | void = undefined;
     try {
-      await this.task();
+      changed = await this.task();
     } catch (error) {
       this.onError(error);
     } finally {
       this.running = false;
-      if (this.rerunRequested) {
-        this.rerunRequested = false;
+      const requested = this.rerunRequested;
+      this.rerunRequested = false;
+      if (changed === true || !requested) {
+        this.echoes = 0;
+      } else if (changed === false) {
+        this.echoes++;
+      }
+      // A failed run with a pending trigger leaves the streak as it was.
+      if (requested && this.echoes > MAX_ECHOES) {
+        // Report once per loop: the first dropped follow-up.
+        if (this.echoes === MAX_ECHOES + 1) {
+          this.options.onFeedbackStopped?.(this.echoes);
+        }
+      } else if (requested) {
         this.schedule();
       }
     }

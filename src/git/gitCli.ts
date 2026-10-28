@@ -510,18 +510,20 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
   /**
    * Number of uncommitted paths in the worktree at `root` (staged, unstaged, and untracked when
    * `includeUntracked`). Used to tell the user what a "committed only" comparison leaves out.
+   * Counts files, not folders (see `untrackedFilesMode`).
    */
   async uncommittedCount(root: string, includeUntracked: boolean): Promise<number> {
-    const untrackedMode = includeUntracked ? 'normal' : 'no';
+    const untrackedMode = untrackedFilesMode(includeUntracked);
     return countStatusEntries(await this.run(root, ['status', '--porcelain=v1', '-z', `--untracked-files=${untrackedMode}`]));
   }
 
   /**
    * Uncommitted paths in the worktree at `root`, by kind (staged, unstaged, untracked). Runs with
-   * GIT_OPTIONAL_LOCKS=0 like every command here, so it never takes the index lock.
+   * GIT_OPTIONAL_LOCKS=0 like every command here, so it never takes the index lock. Counts files,
+   * not folders (see `untrackedFilesMode`), so it agrees with the files a comparison lists.
    */
   async statusCounts(root: string, includeUntracked: boolean): Promise<StatusCounts> {
-    const untrackedMode = includeUntracked ? 'normal' : 'no';
+    const untrackedMode = untrackedFilesMode(includeUntracked);
     return parseStatusCounts(await this.run(root, ['status', '--porcelain=v1', '-z', `--untracked-files=${untrackedMode}`]));
   }
 
@@ -752,6 +754,13 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
       });
     }
   }
+}
+
+// `git status --untracked-files`: `all` lists every untracked file. The default (`normal`) folds
+// an untracked folder into one entry, so a new folder of 29 files counted as 1 while Changes and
+// Commits (which use `ls-files --others`) listed all 29. Ignored folders are still skipped.
+function untrackedFilesMode(includeUntracked: boolean): 'all' | 'no' {
+  return includeUntracked ? 'all' : 'no';
 }
 
 // execFile rejects with an Error augmented by `code` (exit code or errno string) and `stderr`;

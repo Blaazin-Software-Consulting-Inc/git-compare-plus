@@ -52,7 +52,10 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 ### Commits
 
 - Worktree rows show uncommitted work (`✎ 3 uncommitted`, staged / unstaged / untracked in the
-  hover), and the Commits view lists a selected worktree's uncommitted changes above its commits.
+  hover), counting each file in a new untracked folder; the repo row shows its main worktree's.
+  Counts are re-checked when you return to the window and every minute, so edits in Claude Code's
+  worktrees show up too. The Commits view lists a selected worktree's uncommitted changes above
+  its commits.
 - **Commits** view: selecting a worktree or branch lists its commits (what it has that the default
   Against doesn't, or its history); search by message, author, file, changed text or ID, on every
   branch and tag. Its **Review in Changes** button opens the listed worktree or branch in Changes;

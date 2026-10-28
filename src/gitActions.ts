@@ -21,6 +21,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { BaseStore } from './baseStore';
 import { branchLocation, localBranchName, openChoices, switchTargetFor, worktreeName, type OpenChoice } from './branchLocation';
+import { setupUses, type DeletedItem } from './setupUses';
 import { dropConfirmation, stashFiles, stashLabel, type StashFile } from './stashes';
 import { revisionUri, sideToUri } from './views/content';
 import type { RepoInfo } from './comparison';
@@ -380,6 +381,7 @@ export class GitActions {
         if (base?.kind === 'ref' && base.ref === node.ref.name) {
           await this.deps.bases.clear(node.repo.commonDir);
         }
+        this.clearChangesIfUsing(node.repo, { kind: 'branch', name: node.ref.name });
       } catch (error) {
         // Logged per branch with its context; continue so one failure does not block the rest.
         this.deps.logger.error('branch deletion failed', error, { function: 'deleteBranches', repo: node.repo.name, branch: node.ref.name, check });
@@ -629,8 +631,15 @@ export class GitActions {
     if (base?.kind === 'worktree' && base.root === worktreePath) {
       await this.deps.bases.clear(repo.commonDir);
     }
+    this.clearChangesIfUsing(repo, { kind: 'worktree', root: worktreePath });
+  }
+
+  // A comparison with a deleted branch or worktree on either side can only fail from now on, and
+  // would re-run (and fail) on every git change; go back to the empty Changes view instead.
+  private clearChangesIfUsing(repo: RepoInfo, item: DeletedItem): void {
     const shown = this.deps.changes.current();
-    if (shown?.setup.requests.some((r) => r.subject.kind === 'worktree' && r.subject.root === worktreePath)) {
+    if (shown !== undefined && shown.setup.requests.some((r) => r.repo.commonDir === repo.commonDir) && setupUses(shown.setup, item)) {
+      this.deps.logger.info('comparison cleared: a side was deleted', { function: 'clearChangesIfUsing', repo: repo.name, item });
       this.deps.changes.clear();
     }
   }

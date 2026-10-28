@@ -14,6 +14,10 @@
  * git extension run `git status` and report a change; the follow-up rerun finds identical results
  * and stops there.
  *
+ * Feedback guard: if reruns keep being triggered while they run and keep finding nothing new, the
+ * runner stops following those triggers (CoalescingRunner, scheduling.ts) and logs one WARN. Each
+ * trigger is logged at DEBUG with its source (file path or repo) so such a loop can be traced.
+ *
  * Controlled by `gitComparePlus.autoRefresh` (default on). Watchers are rebuilt only when the set of
  * watched folders changes, not on every refresh.
  *
@@ -44,13 +48,14 @@ export class ChangesAutoRefresh implements vscode.Disposable {
   private readonly failures = new FailureTracker<'changes'>();
 
   /**
-   * @param rerun - recompute and redraw-if-changed (CompareCommands.rerunQuietly); rejects on failure.
+   * @param rerun - recompute and redraw-if-changed (CompareCommands.rerunQuietly); resolves whether
+   *   the results changed; rejects on failure.
    * @param isEnabled - reads the `gitComparePlus.autoRefresh` setting.
    * @param onPersistentFailure - called once per failure episode that persists.
    */
   constructor(
     private readonly changes: ChangesProvider,
-    rerun: () => Promise<void>,
+    rerun: () => Promise<boolean>,
     private readonly isEnabled: () => boolean,
     private readonly onPersistentFailure: (reason: string) => void,
     private readonly logger: Logger,
@@ -58,10 +63,20 @@ export class ChangesAutoRefresh implements vscode.Disposable {
     this.runner = new CoalescingRunner(
       RERUN_DEBOUNCE_MS,
       async () => {
-        await rerun();
+        const changed = await rerun();
         this.recovered();
+        return changed;
       },
       (error) => this.failed(error),
+      {
+        onFeedbackStopped: (echoes) =>
+          this.logger.warn('automatic refresh loop stopped', {
+            function: 'ChangesAutoRefresh.run',
+            echoes,
+            watchedRoots: this.watchedKey.split('\n'),
+            hint: 'each rerun was triggered while the previous one ran and found nothing new; set the Git Compare+ log level to Debug to see the triggers',
+          }),
+      },
     );
     this.stateSubscription = changes.onDidChangeState((state) => {
       // Every shown comparison was computed successfully (manual or automatic): the list is
@@ -82,6 +97,7 @@ export class ChangesAutoRefresh implements vscode.Disposable {
   /** A repo changed (git events); rerun if it is part of the comparison on display. */
   repoChanged(commonDir: string): void {
     if (this.isEnabled() && this.involved.has(commonDir)) {
+      this.logger.debug('automatic refresh triggered', { function: 'repoChanged', trigger: 'git', commonDir });
       this.runner.schedule();
     }
   }
@@ -124,6 +140,7 @@ export class ChangesAutoRefresh implements vscode.Disposable {
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(root), '**/*'));
     const onEvent = (uri: vscode.Uri): void => {
       if (!isIgnoredChange(root, uri.fsPath)) {
+        this.logger.debug('automatic refresh triggered', { function: 'watchFolder', trigger: 'file', path: uri.fsPath });
         this.runner.schedule();
       }
     };

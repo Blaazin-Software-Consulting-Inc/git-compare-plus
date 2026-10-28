@@ -52,6 +52,7 @@ import { sortBranches, sortWorktrees } from '../treeOrder';
 import type { BaseSpec, RepoInfo, Subject } from '../comparison';
 import type { GitCli } from '../git/gitCli';
 import type { RefEntry, StashEntry, StatusCounts, WorktreeEntry } from '../git/parsers';
+import { repoRowDescription, repoRowUncommittedTooltip } from '../repoRow';
 import { uncommittedText, uncommittedTooltip } from '../uncommitted';
 import { stashDescription, stashFiles, stashLabel, stashTooltip, type StashFile } from '../stashes';
 import { changedFileUri, diffBarIcon } from './changesView';
@@ -117,6 +118,10 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
   private readonly details = new Map<string, Promise<RepoDetails>>();
   // Worktree lists of repos whose details are not loaded (getWorktreesLight); cleared with them.
   private readonly lightWorktrees = new Map<string, Promise<readonly WorktreeEntry[]>>();
+  // Main-worktree uncommitted counts of repos whose details are not loaded (collapsed rows in a
+  // multi-repo window), for the repo row's marker. `undefined` value = loading or failed; cleared
+  // with lightWorktrees.
+  private readonly lightUncommitted = new Map<string, StatusCounts | undefined>();
   // commonDir → repo, for refreshes that arrive keyed by common dir (git change events).
   private knownRepos = new Map<string, RepoInfo>();
   // Background reload failures per repo (commonDir). While a repo has an episode, its row shows a
@@ -148,6 +153,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     this.repos = undefined;
     this.details.clear();
     this.lightWorktrees.clear();
+    this.lightUncommitted.clear();
     this.changeEmitter.fire();
   }
 
@@ -161,6 +167,11 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     const current = this.details.get(commonDir);
     // A git change in a repo that was never expanded: its worktree list may be stale too.
     this.lightWorktrees.delete(commonDir);
+    if (repo !== undefined && current === undefined && this.lightUncommitted.has(commonDir)) {
+      // Its row shows a light uncommitted marker: drop it and redraw, which reloads it.
+      this.lightUncommitted.delete(commonDir);
+      this.changeEmitter.fire();
+    }
     if (repo === undefined || current === undefined) {
       return;
     }
@@ -209,10 +220,44 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     this.changeEmitter.fire();
   }
 
+  /**
+   * Re-count uncommitted work in every loaded repo's worktrees and redraw only if a count changed.
+   * Git change events miss edits in worktrees the editor's git extension does not watch (Claude's
+   * `.claude/worktrees/*`, `<repo>.worktrees/*`), so the window-focus, view-visible and minute
+   * triggers in extension.ts call this. Runs only `git status` per worktree, not the full reload.
+   * Never throws; a failed count keeps the previous marker (logged by uncommittedCounts).
+   */
+  async refreshUncommitted(): Promise<void> {
+    // Rows of repos never expanded show a light marker: drop it so they reload on redraw.
+    const hadLight = this.lightUncommitted.size > 0;
+    this.lightUncommitted.clear();
+    const git = await this.deps.getGit();
+    const changed = await Promise.all(
+      [...this.details.entries()].map(async ([commonDir, pending]) => {
+        const repo = this.knownRepos.get(commonDir);
+        const before = await pending.catch(() => undefined);
+        if (repo === undefined || before === undefined) {
+          return false;
+        }
+        const uncommitted = await this.uncommittedCounts(git, repo, before.worktrees);
+        // A full reload replaced the entry meanwhile: it already has fresh counts.
+        if (this.details.get(commonDir) !== pending || stableSignature(uncommitted) === stableSignature(before.uncommitted)) {
+          return false;
+        }
+        this.details.set(commonDir, Promise.resolve({ ...before, uncommitted }));
+        return true;
+      }),
+    );
+    if (hadLight || changed.some(Boolean)) {
+      this.changeEmitter.fire();
+    }
+  }
+
   /** Reload one repo's worktrees, branches and fetch time (after a git action on it). */
   refreshRepo(repo: RepoInfo): void {
     this.details.delete(repo.commonDir);
     this.lightWorktrees.delete(repo.commonDir);
+    this.lightUncommitted.delete(repo.commonDir);
     this.changeEmitter.fire();
   }
 
@@ -268,6 +313,39 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
       this.lightWorktrees.set(repo.commonDir, pending);
     }
     return pending;
+  }
+
+  /**
+   * The main worktree's uncommitted counts for a repo whose details are not loaded: the cached
+   * value, or undefined while one `git status` runs in the background (the row redraws when it
+   * lands, so rows never wait for it). Cosmetic: a failure leaves the row without a marker (WARN)
+   * until the repo next changes or Refresh.
+   */
+  private lightMainUncommitted(repo: RepoInfo): StatusCounts | undefined {
+    if (this.lightUncommitted.has(repo.commonDir)) {
+      return this.lightUncommitted.get(repo.commonDir);
+    }
+    this.lightUncommitted.set(repo.commonDir, undefined);
+    void this.loadLightMainUncommitted(repo);
+    return undefined;
+  }
+
+  private async loadLightMainUncommitted(repo: RepoInfo): Promise<void> {
+    try {
+      const [main] = await this.getWorktreesLight(repo);
+      const counts = main === undefined ? undefined : await (await this.deps.getGit()).statusCounts(main.path, this.deps.includeUntracked());
+      // Dropped meanwhile (Refresh, a git change): a newer load owns the entry.
+      if (!this.lightUncommitted.has(repo.commonDir)) {
+        return;
+      }
+      this.lightUncommitted.set(repo.commonDir, counts);
+      // Redraw only when there is a marker to show; a clean repo's row is already right.
+      if (counts !== undefined && counts.total > 0) {
+        this.changeEmitter.fire();
+      }
+    } catch (error) {
+      this.deps.logger.warn('main worktree status unavailable', { function: 'loadLightMainUncommitted', repo: repo.name, reason: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   /** Usable (non-bare, non-stale) worktrees of one repo, main first (cached). */
@@ -507,9 +585,12 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
     const stale = details !== undefined && isFetchStale(details.lastFetchedAt, now, this.deps.staleFetchHours());
     // Always say what the one-click compare uses, so neither side of a comparison is ever implicit.
     const against = base !== undefined ? baseLabel(base) : details?.defaultBranch;
-    item.description = [main?.branch, against !== undefined ? `against ${against}` : undefined, fetched].filter(Boolean).join(' · ');
+    // The main worktree's uncommitted work shows here too (repoRow.ts).
+    const mainUncommitted = details === undefined ? this.lightMainUncommitted(repo) : main === undefined ? undefined : details.uncommitted.get(main.path);
+    item.description = repoRowDescription({ branch: main?.branch, uncommitted: mainUncommitted, against, fetched });
+    const dirty = repoRowUncommittedTooltip(mainUncommitted);
     item.tooltip =
-      `${repo.root}\nThe compare button reviews against ${against ?? 'the default branch'}${base !== undefined ? ' (set for this repo)' : ' (default branch)'}. Right-click → Change Default Against…` +
+      `${repo.root}${dirty === undefined ? '' : `\n${dirty}`}\nThe compare button reviews against ${against ?? 'the default branch'}${base !== undefined ? ' (set for this repo)' : ' (default branch)'}. Right-click → Change Default Against…` +
       (stale ? '\nNot fetched recently: comparisons with remote branches may be out of date. Right-click → Fetch.' : '');
     if (stale) {
       item.iconPath = new vscode.ThemeIcon('repo', new vscode.ThemeColor('list.warningForeground'));

@@ -366,10 +366,21 @@ function startAutoRefresh(
       }),
   );
 
+  // Worktrees the git extension does not watch (Claude's `.claude/worktrees/*`) send no change
+  // events, so their uncommitted markers are re-counted when you come back to the window, when
+  // Repositories becomes visible, and once a minute while it is.
+  const recountUncommitted = (trigger: string): void => {
+    if (repositoriesView.visible) {
+      void repositories.refreshUncommitted().catch((error: unknown) =>
+        logger.warn('uncommitted recount failed', { function: 'recountUncommitted', trigger, reason: error instanceof Error ? error.message : String(error) }),
+      );
+    }
+  };
   const ageTimer = setInterval(() => {
     if (repositoriesView.visible) {
       repositories.redraw();
     }
+    recountUncommitted('minute');
     repositories.refreshMessage();
     changesRefresh.refreshMessage();
     void commands.refreshAges();
@@ -377,6 +388,12 @@ function startAutoRefresh(
 
   return [
     changesRefresh,
+    vscode.window.onDidChangeWindowState((state) => {
+      if (state.focused) {
+        recountUncommitted('windowFocus');
+      }
+    }),
+    repositoriesView.onDidChangeVisibility(() => recountUncommitted('viewVisible')),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('gitComparePlus.autoRefresh')) {
         changesRefresh.settingChanged();
@@ -800,24 +817,27 @@ class CompareCommands {
 
   /**
    * Automatic rerun (file watchers / git events). Unlike `rerun` it does not focus the view, and it
-   * only redraws when the results differ. It is also discarded if the user started a different
+   * only redraws when the results differ, and resolves whether they did. It is also discarded if the user started a different
    * comparison while it ran, so a background run never overwrites a newer choice.
    */
-  async rerunQuietly(): Promise<void> {
+  async rerunQuietly(): Promise<boolean> {
     const state = this.changes.current();
     if (state === undefined) {
-      return;
+      return false;
     }
     const results = await this.compute(state.setup);
+    // Discarded: the user moved on. Counts as a change so the loop guard never holds it against
+    // the comparison now on display.
     if (this.changes.current() !== state) {
-      return;
+      return true;
     }
     const baseFetch = await this.baseFetchInfo(results);
     if (stableSignature({ results, baseFetch }) === stableSignature({ results: state.results, baseFetch: state.baseFetch })) {
-      return;
+      return false;
     }
     this.logger.debug('comparison auto-refreshed', { function: 'rerunQuietly', fileCount: results.reduce((n, r) => n + r.files.length, 0) });
     this.changes.show({ ...state, results, baseFetch });
+    return true;
   }
 
   /**

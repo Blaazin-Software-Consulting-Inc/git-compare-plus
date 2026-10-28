@@ -195,8 +195,13 @@ counts follow the default Against: change it and every row recounts. A worktree 
 last commit.
 
 **Uncommitted work:** a worktree with uncommitted files says so on its row (`✎ 3 uncommitted`);
-hover for how many are staged, changed but not staged, and untracked. The counts refresh with the
-repo (after a commit, a branch switch, a fetch, or Refresh). With git 2.41 or later, every branch is counted in one git command.
+hover for how many are staged, changed but not staged, and untracked. Every file counts, including
+each file in a new untracked folder. The repo's own row shows the same marker for its main
+worktree (the folder you cloned), so your local checkout's work is visible without expanding the
+repo. The counts refresh with the repo (after a commit, a branch switch, a fetch, or Refresh), and
+are re-counted when you come back to the window, when the view becomes visible, and every minute
+while it is: edits in worktrees the editor's Source Control doesn't track (such as Claude Code's
+`.claude/worktrees/*`) send no change events. With git 2.41 or later, every branch is counted in one git command.
 Older git (Apple's bundled git can lag behind) counts local branches and detached worktrees one
 by one, and remote branches show no counts.
 
@@ -408,10 +413,17 @@ Both views update themselves; you only need **Refresh** if you've turned automat
 | --- | --- | --- |
 | **Repositories** | You commit, switch, create or delete branches, add or remove worktrees, or fetch, whether in Source Control, the terminal or Claude Code | Follows the editor's git change events. Each repo reloads about 1 s after changes stop, and the tree redraws only if something actually changed. |
 | **Changes** | Files change in a compared worktree (edits, saves, new or deleted files), or the git state of a compared repo changes | Watches the compared worktree folders, including ones not open in this window, plus git events for the repos involved. Re-runs about 1.5 s after changes stop and redraws only if the results differ. Turn off with `gitComparePlus.autoRefresh`. |
+| **Uncommitted markers** | You come back to the window, the view becomes visible, and every minute while it's visible | One `git status` per worktree; redraws only if a count changed. |
 | **Ages** (`3 h ago`, stale fetch) | Every minute | Redraw only, no git commands. |
 
 Changes inside `.git`, `node_modules`, `dist`, `build`, `out`, `coverage`, `cdk.out` and
 similar folders don't trigger a re-run.
+
+If you delete the branch or remove the worktree that Changes is showing (on either side) from
+Repositories, Changes clears instead of re-running a comparison that can only fail. If re-runs keep
+being triggered while they run and keep finding nothing new, Changes stops following those
+triggers after three and logs a warning; edits made afterwards still refresh it. Set the Git
+Compare+ output's log level to Debug to see what triggers each re-run.
 
 **When a background refresh fails** (for example git's `index.lock` held during a rebase, or a
 worktree folder deleted from under the view), the view keeps showing what it had, and says so:

@@ -92,6 +92,61 @@ describe('CoalescingRunner', () => {
     expect(task).toHaveBeenCalledTimes(2);
   });
 
+  // A task that triggers itself while it runs, as a watcher reporting the run's own git commands
+  // would; `changed` says what each run reports.
+  function selfTriggering(changed: () => boolean, onFeedbackStopped = vi.fn()) {
+    let runner: CoalescingRunner | undefined;
+    const task = vi.fn(async () => {
+      runner?.schedule();
+      return changed();
+    });
+    runner = new CoalescingRunner(100, task, vi.fn(), { onFeedbackStopped });
+    return { runner, task, onFeedbackStopped };
+  }
+
+  it('stops a feedback loop: runs that trigger themselves and find nothing new', async () => {
+    const { runner, task, onFeedbackStopped } = selfTriggering(() => false);
+    runner.schedule();
+    await vi.advanceTimersByTimeAsync(10_000);
+    // The first run plus three follow-ups, then the loop is cut and reported once.
+    expect(task).toHaveBeenCalledTimes(4);
+    expect(onFeedbackStopped).toHaveBeenCalledTimes(1);
+  });
+
+  it('still runs for a trigger that arrives while idle after a loop was stopped, without reporting again', async () => {
+    const { runner, task, onFeedbackStopped } = selfTriggering(() => false);
+    runner.schedule();
+    await vi.advanceTimersByTimeAsync(10_000);
+    runner.schedule();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(task).toHaveBeenCalledTimes(5);
+    expect(onFeedbackStopped).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps following triggers during runs that find changes (real edits while it runs)', async () => {
+    let runs = 0;
+    const { runner, task, onFeedbackStopped } = selfTriggering(() => ++runs <= 8);
+    runner.schedule();
+    await vi.advanceTimersByTimeAsync(10_000);
+    // 8 changed runs, then the guard needs 3 unchanged follow-ups before it cuts in.
+    expect(task).toHaveBeenCalledTimes(12);
+    expect(onFeedbackStopped).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a task that reports nothing as a change, so plain tasks are never cut off', async () => {
+    let runner: CoalescingRunner | undefined;
+    let runs = 0;
+    const task = vi.fn(async () => {
+      if (++runs < 10) {
+        runner?.schedule();
+      }
+    });
+    runner = new CoalescingRunner(100, task, vi.fn());
+    runner.schedule();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(task).toHaveBeenCalledTimes(10);
+  });
+
   it('dispose cancels a pending run and ignores later triggers', async () => {
     const task = vi.fn(async () => {});
     const runner = new CoalescingRunner(100, task, vi.fn());

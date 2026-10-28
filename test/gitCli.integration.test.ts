@@ -417,6 +417,18 @@ describe('GitCli against a real repository', () => {
     expect(await cli.statusCounts(worktreeRoot, false)).toEqual({ staged: 0, unstaged: 1, untracked: 0, total: 1 });
     expect((await cli.statusCounts(repoRoot, true)).total).toBe(0);
 
+    // An untracked folder counts as its files, matching what Changes and Commits list.
+    mkdirSync(path.join(repoRoot, 'new-folder', 'deeper'), { recursive: true });
+    writeFileSync(path.join(repoRoot, 'new-folder', 'a.txt'), 'a\n');
+    writeFileSync(path.join(repoRoot, 'new-folder', 'deeper', 'b.txt'), 'b\n');
+    try {
+      expect(await cli.statusCounts(repoRoot, true)).toEqual({ staged: 0, unstaged: 0, untracked: 2, total: 2 });
+      expect(await cli.uncommittedCount(repoRoot, true)).toBe(2);
+      expect((await cli.statusCounts(repoRoot, false)).total).toBe(0);
+    } finally {
+      rmSync(path.join(repoRoot, 'new-folder'), { recursive: true, force: true });
+    }
+
     // What the Commits view's "Uncommitted changes" row runs: the worktree against its own HEAD.
     const [result] = await compare({ kind: 'worktree', root: worktreeRoot, label: 'feature', includeUncommitted: true }, { kind: 'ref', ref: 'HEAD', label: 'last commit', refKind: 'commit' }, 'direct');
     expect(result?.files.map((f) => [f.status, f.path])).toEqual([
