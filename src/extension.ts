@@ -34,7 +34,9 @@ import { RefType, rankBranchCandidates } from './branchCandidates';
 import { BaseStore, baseMatches } from './baseStore';
 import {
   baseForcesDirect,
+  committedPartSides,
   diffSides,
+  uncommittedPartSides,
   subjectCwd,
   runComparisons,
   type BaseSpec,
@@ -144,7 +146,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     changes,
     bases,
     logger,
-    compareWorktree: (repo, worktree) => commands.compareNode({ kind: 'worktree', repo, worktree, isMain: false }, 'stored'),
+    compareWorktree: (repo, worktree) => commands.compareNode({ kind: 'worktree', repo, worktree, isMain: false, group: 'worktrees' }, 'stored'),
     windowFolders: () => windowFolders(),
     openInSourceControl: async (worktreePath) => {
       const opened = await (await getServices()).api.openRepository(vscode.Uri.file(worktreePath));
@@ -243,6 +245,9 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     register('gitComparePlus.openWorktree', (node: RepoTreeNode) => commands.openWorktree(node), logger),
     register('gitComparePlus.openChange', (node: ChangesNode) => commands.openChange(node), logger),
     register('gitComparePlus.openAllChanges', () => commands.openAllChanges(), logger),
+    register('gitComparePlus.openCommittedChange', (node: ChangesNode) => commands.openChangePart(node, 'committed'), logger),
+    register('gitComparePlus.openUncommittedChange', (node: ChangesNode) => commands.openChangePart(node, 'uncommitted'), logger),
+    register('gitComparePlus.openAllUncommittedChanges', () => commands.openAllUncommittedChanges(), logger),
     register('gitComparePlus.viewAsTree', () => setChangesLayout('tree'), logger),
     register('gitComparePlus.viewAsList', () => setChangesLayout('list'), logger),
     register('gitComparePlus.swapSides', () => commands.swapSides(), logger),
@@ -795,6 +800,36 @@ class CompareCommands {
     const sides = diffSides(result, file);
     const title = `${path.posix.basename(file.path)} (${result.baseLabel ?? 'base'} ↔ ${subjectTitle(result.subject)})`;
     await vscode.commands.executeCommand('vscode.diff', sideToUri(sides.left, file.oldPath), sideToUri(sides.right, file.path), title, { preview: true });
+  }
+
+  /**
+   * Changed file (committed AND uncommitted) → one part of its change: the committed part
+   * (Against side ↔ HEAD) or the uncommitted edits (HEAD ↔ the file on disk). The menu offers it
+   * only on such files; the undefined check covers a stale menu after a refresh.
+   */
+  async openChangePart(node: ChangesNode, part: 'committed' | 'uncommitted'): Promise<void> {
+    if (node.kind !== 'file') {
+      return;
+    }
+    const { result, file } = node;
+    const sides = part === 'committed' ? committedPartSides(result, file) : uncommittedPartSides(result, file);
+    if (sides === undefined) {
+      void vscode.window.showInformationMessage(`${file.path} has no separate ${part} part: its whole change is ${part === 'committed' ? 'uncommitted' : 'committed'}. Click it to open it.`);
+      return;
+    }
+    const label = part === 'committed' ? `${result.baseLabel ?? 'base'} ↔ HEAD, committed` : 'HEAD ↔ disk, uncommitted';
+    await vscode.commands.executeCommand('vscode.diff', sideToUri(sides.left, file.oldPath), sideToUri(sides.right, file.path), `${path.posix.basename(file.path)} (${label})`, { preview: true });
+  }
+
+  /** Every file's uncommitted edits (HEAD ↔ disk), in one multi-file diff, like Source Control. */
+  async openAllUncommittedChanges(): Promise<void> {
+    const entries = multiDiffEntries(this.changes.allFileNodes(), uncommittedPartSides);
+    this.logger.info('uncommitted changes opened', { function: 'openAllUncommittedChanges', fileCount: entries.length });
+    if (entries.length === 0) {
+      void vscode.window.showInformationMessage('No file in this comparison has uncommitted edits.');
+      return;
+    }
+    await vscode.commands.executeCommand('vscode.changes', 'Uncommitted changes (HEAD ↔ disk)', entries);
   }
 
   /** Open every file of the current comparison in one multi-file diff editor. */

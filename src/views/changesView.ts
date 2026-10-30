@@ -20,14 +20,17 @@
  * automatic refresh brings a changed version of the file. Toggles are handled in extension.ts.
  * The row's icon is a green/red diff bar for its line counts (diffBar.ts) instead of the file-type
  * icon; binary files and files with unknown counts keep the file-type icon. The hover repeats the
- * counts in colour, since the row's description text cannot be coloured.
+ * counts in colour, since the row's description text cannot be coloured. A file with uncommitted
+ * edits starts its description with `✎` (changeOrigin.ts); the hover says committed / uncommitted
+ * / both, and which kind of uncommitted edit.
  * Status letters and colors come from a FileDecorationProvider on the private
  * `git-compare-plus-item:` scheme. Using real file URIs as `resourceUri` would make the editor's own git
  * decorations (relative to HEAD, not to the comparison base) appear and contradict ours.
  */
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { totalLineStats, type ComparisonResult } from '../comparison';
+import { originMark, originTooltip, uncommittedFileCount } from '../changeOrigin';
+import { hasBothOrigins, totalLineStats, type ComparisonResult } from '../comparison';
 import type { ChangedFile, CommitEntry, FileStatus } from '../git/parsers';
 import { commitCountText, commitDescription, commitTitle, commitTooltip } from './commitText';
 import { describeHeader, sidesSummary, type BaseFetchInfo, type ComparisonSetup, type HeaderRow } from './changesHeader';
@@ -109,6 +112,8 @@ export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vs
     this.state = state;
     this.updateViewChrome();
     void vscode.commands.executeCommand('setContext', 'gitComparePlus.hasComparison', true);
+    // Drives "Open All Uncommitted Changes" in the title bar's … menu.
+    void vscode.commands.executeCommand('setContext', 'gitComparePlus.hasUncommittedFiles', state.results.some((r) => uncommittedFileCount(r.files) > 0));
     this.changeEmitter.fire();
     this.stateEmitter.fire(state);
   }
@@ -118,6 +123,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<ChangesNode>, vs
     this.state = undefined;
     this.updateViewChrome();
     void vscode.commands.executeCommand('setContext', 'gitComparePlus.hasComparison', false);
+    void vscode.commands.executeCommand('setContext', 'gitComparePlus.hasUncommittedFiles', false);
     this.changeEmitter.fire();
     this.stateEmitter.fire(undefined);
   }
@@ -377,7 +383,7 @@ function fileItem(result: ComparisonResult, file: ChangedFile, reviewed: boolean
   // In the tree layout the folder is the parent row, so only a rename's origin is worth repeating.
   const shownLocation = showFolder ? location : '';
   const where = file.status === 'renamed' ? `${shownLocation} ← ${file.oldPath}`.trim() : shownLocation;
-  item.description = [fileLineStatsText(file.lines), where].filter((part) => part.length > 0).join('  ');
+  item.description = [originMark(file.origin), fileLineStatsText(file.lines), where].filter((part) => part.length > 0).join('  ');
   // iconPath wins over the file-type icon that resourceUri would give; resourceUri is still what
   // carries the status decoration (badge letter and label colour).
   const icon = diffBarIcon(file, extensionUri);
@@ -385,8 +391,9 @@ function fileItem(result: ComparisonResult, file: ChangedFile, reviewed: boolean
     item.iconPath = icon;
   }
   item.tooltip = fileTooltip(file);
-  // `changedFile.<status>`: Open File is hidden for deletions, Open File at Base for additions.
-  item.contextValue = `changedFile.${file.status}`;
+  // `changedFile.<status>[.both]`: Open File is hidden for deletions, Open File at Base for
+  // additions; `.both` (committed + uncommitted) offers Open Committed / Uncommitted Changes.
+  item.contextValue = `changedFile.${file.status}${hasBothOrigins(file) ? '.both' : ''}`;
   item.command = { command: 'gitComparePlus.openChange', title: 'Open Change', arguments: [{ kind: 'file', result, file }] };
   return item;
 }
@@ -407,6 +414,10 @@ function fileTooltip(file: ChangedFile): vscode.MarkdownString {
     if (file.lines !== undefined && !file.lines.binary) {
       tooltip.appendText(` (${lineStatsTooltip(file.lines) ?? ''})`);
     }
+  }
+  const origin = originTooltip(file.origin);
+  if (origin !== undefined) {
+    tooltip.appendText(`\n\n${origin}`);
   }
   return tooltip;
 }

@@ -243,7 +243,7 @@ export class GitActions {
     const removable = worktreeNodes.filter((n) => !n.isMain);
     const skipped: SkippedItem[] = worktreeNodes
       .filter((n) => n.isMain)
-      .map((n) => ({ label: `${n.repo.name} (main worktree)`, reason: 'the main worktree cannot be removed' }));
+      .map((n) => ({ label: `${n.repo.name} (repo folder)`, reason: 'the repo folder is the main worktree and cannot be removed' }));
     const candidates: WorktreeCandidate[] = await Promise.all(
       removable.map(async (n) => ({
         repoName: n.repo.name,

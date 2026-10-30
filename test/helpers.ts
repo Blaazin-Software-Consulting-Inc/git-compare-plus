@@ -54,6 +54,7 @@ export function fakePort(overrides: Partial<ComparisonPort> = {}): { [K in keyof
     hashWorkingFiles: vi.fn(async () => new Map()),
     untracked: vi.fn(async () => []),
     uncommittedCount: vi.fn(async () => 0),
+    uncommittedPaths: vi.fn(async () => new Map()),
     snapshotWorktree: vi.fn(async (root: string) => `tree:${root}`),
     ...overrides,
   } as { [K in keyof ComparisonPort]: ReturnType<typeof vi.fn> & ComparisonPort[K] };

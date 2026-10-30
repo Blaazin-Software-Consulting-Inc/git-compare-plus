@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   COMMIT_LIMIT,
   baseForcesDirect,
+  committedPartSides,
   diffSides,
+  hasBothOrigins,
+  uncommittedPartSides,
   runComparisons,
   subjectCwd,
   totalLineStats,
@@ -277,7 +280,8 @@ describe('line stats', () => {
     });
     const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt') }], DEFAULT, 'merge-base', { includeUntracked: true, logger });
     expect(result?.outcome).toBe('compared');
-    expect(result?.files).toEqual([modified]);
+    // No fingerprint; the origin comes from the same fake diff (left..HEAD lists it: committed).
+    expect(result?.files).toEqual([{ ...modified, origin: { committed: true } }]);
     expect(logger.calls.warn).toEqual([[expect.stringContaining('fingerprints unavailable'), expect.objectContaining({ reason: 'EACCES' })]]);
   });
 
@@ -459,5 +463,138 @@ describe('branch point (merge-base mode)', () => {
     expect(result?.outcome).toBe('compared');
     expect(result?.branchPoint).toBeUndefined();
     expect(logger.calls.warn.some(([message]) => message === 'branch point unavailable')).toBe(true);
+  });
+});
+
+describe('change origins (working tree subject)', () => {
+  const file = (p: string, status: 'modified' | 'added' | 'untracked' | 'renamed' = 'modified', oldPath = p) => ({ status, path: p, oldPath });
+  const edited = { staged: false, unstaged: true, untracked: false };
+
+  it('marks each file committed, uncommitted or both, from left..HEAD and git status of the worktree', async () => {
+    const git = fakePort({
+      // Called once for the working tree (no `to`) and once for left..HEAD.
+      diffNameStatus: vi.fn(async (_cwd: string, _from: string, to?: string) =>
+        to === 'HEAD' ? [file('committed.ts'), file('both.ts')] : [file('committed.ts'), file('both.ts'), file('edited.ts')],
+      ),
+      untracked: vi.fn(async () => ['new.ts']),
+      uncommittedPaths: vi.fn(async () => new Map([['both.ts', edited], ['edited.ts', edited], ['new.ts', { staged: false, unstaged: false, untracked: true }]])),
+    });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt') }], DEFAULT, 'merge-base', options());
+
+    expect(git.diffNameStatus).toHaveBeenCalledWith('/wt', 'mb', 'HEAD');
+    expect(git.uncommittedPaths).toHaveBeenCalledWith('/wt', true);
+    expect(Object.fromEntries((result?.files ?? []).map((f) => [f.path, f.origin]))).toEqual({
+      'both.ts': { committed: true, uncommitted: edited },
+      'committed.ts': { committed: true },
+      'edited.ts': { committed: false, uncommitted: edited },
+      'new.ts': { committed: false, uncommitted: { staged: false, unstaged: false, untracked: true } },
+    });
+  });
+
+  it('passes the untracked setting through to git status', async () => {
+    const git = fakePort();
+    await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt') }], DEFAULT, 'merge-base', options(false));
+    expect(git.uncommittedPaths).toHaveBeenCalledWith('/wt', false);
+  });
+
+  it('does not look for origins when the subject is a revision (all committed)', async () => {
+    const git = fakePort({ diffNameStatus: vi.fn(async () => [file('a.ts')]) });
+    const [committedOnly] = await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt', false) }], DEFAULT, 'merge-base', options());
+    const [onBranch] = await runComparisons(git, [{ repo: repo('svc'), subject: branch('feature') }], DEFAULT, 'merge-base', options());
+    expect(git.uncommittedPaths).not.toHaveBeenCalled();
+    expect(committedOnly?.files[0]?.origin).toBeUndefined();
+    expect(onBranch?.files[0]?.origin).toBeUndefined();
+  });
+
+  it('works against a snapshot Against side (a tree): left..HEAD is still a valid diff', async () => {
+    const git = fakePort({
+      diffNameStatus: vi.fn(async (_cwd: string, _from: string, to?: string) => (to === 'HEAD' ? [] : [file('a.ts')])),
+      uncommittedPaths: vi.fn(async () => new Map([['a.ts', edited]])),
+    });
+    const base: BaseSpec = { kind: 'worktree', root: '/other', label: 'other', includeUncommitted: true };
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt') }], base, 'merge-base', options());
+    expect(git.diffNameStatus).toHaveBeenCalledWith('/wt', 'tree:/other', 'HEAD');
+    expect(result?.files[0]?.origin).toEqual({ committed: false, uncommitted: edited });
+  });
+
+  it('still lists the files, unmarked, when git status fails (WARN, not a failed comparison)', async () => {
+    const logger = recordingLogger();
+    const git = fakePort({
+      diffNameStatus: vi.fn(async () => [file('a.ts')]),
+      uncommittedPaths: vi.fn(async () => {
+        throw new Error('index.lock');
+      }),
+    });
+    const [result] = await runComparisons(git, [{ repo: repo('svc'), subject: worktree('/wt') }], DEFAULT, 'merge-base', { includeUntracked: true, logger });
+    expect(result?.outcome).toBe('compared');
+    expect(result?.files.map((f) => [f.path, f.origin])).toEqual([['a.ts', undefined]]);
+    expect(logger.calls.warn).toEqual([[expect.stringContaining('change origins unavailable'), expect.objectContaining({ reason: 'index.lock', cwd: '/wt' })]]);
+  });
+});
+
+describe('committed and uncommitted parts of one file', () => {
+  const unstaged = { staged: false, unstaged: true, untracked: false };
+  const onDisk: ComparisonResult = {
+    repo: repo('svc'),
+    subject: worktree('/wt'),
+    outcome: 'compared',
+    mode: 'merge-base',
+    baseLabel: 'origin/master',
+    baseRevision: 'mb',
+    excludedUncommitted: {},
+    files: [],
+  };
+  const both = { status: 'modified' as const, path: 'a.ts', oldPath: 'a.ts', origin: { committed: true, uncommitted: unstaged } };
+
+  it('committed part: Against side (branch point) ↔ HEAD; uncommitted part: HEAD ↔ the file on disk', () => {
+    expect(committedPartSides(onDisk, both)).toEqual({
+      left: { kind: 'revision', cwd: '/wt', revision: 'mb', path: 'a.ts' },
+      right: { kind: 'revision', cwd: '/wt', revision: 'HEAD', path: 'a.ts' },
+    });
+    expect(uncommittedPartSides(onDisk, both)).toEqual({
+      left: { kind: 'revision', cwd: '/wt', revision: 'HEAD', path: 'a.ts' },
+      right: { kind: 'file', absolutePath: path.join('/wt', 'a.ts') },
+    });
+    expect(hasBothOrigins(both)).toBe(true);
+  });
+
+  it('follows renames: base at the old path, HEAD at its path before an uncommitted `git mv`', () => {
+    const moved = { status: 'renamed' as const, path: 'new.ts', oldPath: 'old.ts', origin: { committed: true, uncommitted: { ...unstaged, staged: true, headPath: 'mid.ts' } } };
+    expect(committedPartSides(onDisk, moved)?.left).toEqual({ kind: 'revision', cwd: '/wt', revision: 'mb', path: 'old.ts' });
+    expect(committedPartSides(onDisk, moved)?.right).toEqual({ kind: 'revision', cwd: '/wt', revision: 'HEAD', path: 'mid.ts' });
+    expect(uncommittedPartSides(onDisk, moved)?.left).toEqual({ kind: 'revision', cwd: '/wt', revision: 'HEAD', path: 'mid.ts' });
+  });
+
+  it('a file added by a commit and edited since has an empty Against side in its committed part', () => {
+    const added = { ...both, status: 'added' as const };
+    expect(committedPartSides(onDisk, added)?.left).toEqual({ kind: 'empty' });
+  });
+
+  it('an uncommitted deletion of a committed change has an empty disk side', () => {
+    const deleted = { ...both, status: 'deleted' as const };
+    expect(uncommittedPartSides(onDisk, deleted)?.right).toEqual({ kind: 'empty' });
+  });
+
+  it('a committed file deleted then re-created untracked has no HEAD version in its uncommitted part', () => {
+    const recreated = { ...both, origin: { committed: true, uncommitted: { staged: false, unstaged: false, untracked: true } } };
+    expect(uncommittedPartSides(onDisk, recreated)?.left).toEqual({ kind: 'empty' });
+  });
+
+  it('a file with only uncommitted edits: its uncommitted part is its whole diff; it has no committed part', () => {
+    const editedOnly = { ...both, origin: { committed: false, uncommitted: unstaged } };
+    expect(uncommittedPartSides(onDisk, editedOnly)).toEqual(diffSides(onDisk, editedOnly));
+    expect(committedPartSides(onDisk, editedOnly)).toBeUndefined();
+    expect(hasBothOrigins(editedOnly)).toBe(false);
+  });
+
+  it('has no parts for committed-only files, unmarked files, or a subject that is not the working tree', () => {
+    const committedOnly = { ...both, origin: { committed: true } };
+    const unmarked = { status: 'modified' as const, path: 'a.ts', oldPath: 'a.ts' };
+    expect(uncommittedPartSides(onDisk, committedOnly)).toBeUndefined();
+    expect(committedPartSides(onDisk, committedOnly)).toBeUndefined();
+    expect(uncommittedPartSides(onDisk, unmarked)).toBeUndefined();
+    const onBranch: ComparisonResult = { ...onDisk, subject: branch('feature'), subjectRevision: 'sha:feature' };
+    expect(uncommittedPartSides(onBranch, both)).toBeUndefined();
+    expect(committedPartSides(onBranch, both)).toBeUndefined();
   });
 });

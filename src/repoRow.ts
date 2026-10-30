@@ -31,5 +31,5 @@ export function repoRowDescription(parts: RepoRowParts): string {
 /** Hover line for the main worktree's uncommitted work, or undefined when it is clean or unknown. */
 export function repoRowUncommittedTooltip(uncommitted: StatusCounts | undefined): string | undefined {
   const line = uncommittedTooltip(uncommitted);
-  return line === undefined ? undefined : `${line} (main worktree)`;
+  return line === undefined ? undefined : `${line} (repo folder)`;
 }

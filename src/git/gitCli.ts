@@ -47,6 +47,7 @@ import {
   parseRefList,
   parseStashList,
   parseStatusCounts,
+  parseStatusPaths,
   parseTagList,
   parseWorktreeList,
   type BlameLine,
@@ -58,6 +59,7 @@ import {
   type StashEntry,
   type StatusCounts,
   type TagEntry,
+  type UncommittedState,
   type WorktreeEntry,
 } from './parsers';
 
@@ -525,6 +527,16 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
   async statusCounts(root: string, includeUntracked: boolean): Promise<StatusCounts> {
     const untrackedMode = untrackedFilesMode(includeUntracked);
     return parseStatusCounts(await this.run(root, ['status', '--porcelain=v1', '-z', `--untracked-files=${untrackedMode}`]));
+  }
+
+  /**
+   * Uncommitted paths in the worktree at `root` with their state (staged, unstaged, untracked),
+   * keyed by repo-relative path; for marking which changes in a comparison are uncommitted
+   * (changeOrigin.ts). Ignored files are never listed: `git status` honours .gitignore.
+   */
+  async uncommittedPaths(root: string, includeUntracked: boolean): Promise<Map<string, UncommittedState>> {
+    const untrackedMode = untrackedFilesMode(includeUntracked);
+    return parseStatusPaths(await this.run(root, ['status', '--porcelain=v1', '-z', `--untracked-files=${untrackedMode}`]));
   }
 
   /**

@@ -87,9 +87,9 @@ export function windowWorktree(
   return open[0];
 }
 
-/** Status bar text: `main worktree` or the worktree folder's short path. */
+/** Status bar text: `repo folder` or the worktree folder's short path. */
 export function statusText(current: WindowWorktree): string {
-  return samePath(current.worktree.path, current.repo.root) ? 'main worktree' : displayPath(current.repo.root, current.worktree.path);
+  return samePath(current.worktree.path, current.repo.root) ? 'repo folder' : displayPath(current.repo.root, current.worktree.path);
 }
 
 // Git prints forward slashes; editor paths use the platform separator. Compare in one form.

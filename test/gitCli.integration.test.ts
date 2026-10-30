@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadBranchCommits } from '../src/commits/branchCommits';
 import { searchArgs } from '../src/commits/commitSearch';
 import { stashFiles } from '../src/stashes';
-import { runComparisons, type BaseSpec, type Subject } from '../src/comparison';
+import { committedPartSides, runComparisons, uncommittedPartSides, type BaseSpec, type Subject } from '../src/comparison';
 import { GitCli, GitCommandError } from '../src/git/gitCli';
 import { gitStylePath, recordingLogger } from './helpers';
 
@@ -468,3 +468,60 @@ function compare(subject: Subject, base: BaseSpec, mode: 'merge-base' | 'direct'
     { includeUntracked: true, logger: recordingLogger() },
   );
 }
+
+describe('change origins against real git', () => {
+  it('marks committed, uncommitted (staged, not staged, untracked) and both; ignored files never appear', async () => {
+    const root = path.posix.join(sandbox, 'origins');
+    git(sandbox, 'init', '-q', '-b', 'main', root);
+    git(root, 'config', 'core.autocrlf', 'false');
+    writeFileSync(path.join(root, '.gitignore'), 'secret.env\nbuild/\n');
+    for (const name of ['committed.txt', 'both.txt', 'staged.txt', 'edited.txt', 'renamed.txt']) {
+      writeFileSync(path.join(root, name), `${name} v1\nline2\nline3\n`);
+    }
+    git(root, 'add', '.');
+    git(root, 'commit', '-q', '-m', 'base');
+    git(root, 'switch', '-q', '-c', 'feature');
+    writeFileSync(path.join(root, 'committed.txt'), 'committed v2\nline2\nline3\n');
+    writeFileSync(path.join(root, 'both.txt'), 'both v2\nline2\nline3\n');
+    git(root, 'commit', '-q', '-am', 'feature work');
+    writeFileSync(path.join(root, 'both.txt'), 'both v3 uncommitted\nline2\nline3\n');
+    writeFileSync(path.join(root, 'staged.txt'), 'staged v2\nline2\nline3\n');
+    git(root, 'add', 'staged.txt');
+    writeFileSync(path.join(root, 'edited.txt'), 'edited v2\nline2\nline3\n');
+    git(root, 'mv', 'renamed.txt', 'renamed-now.txt');
+    writeFileSync(path.join(root, 'untracked.txt'), 'new\n');
+    writeFileSync(path.join(root, 'secret.env'), 'TOKEN=x\n');
+    mkdirSync(path.join(root, 'build'));
+    writeFileSync(path.join(root, 'build', 'out.js'), 'x\n');
+
+    const [result] = await runComparisons(
+      new GitCli('git', recordingLogger()),
+      [{ repo: { name: 'origins', root, commonDir: path.posix.join(root, '.git') }, subject: { kind: 'worktree', root, label: 'feature', includeUncommitted: true } }],
+      { kind: 'ref', ref: 'main' },
+      'merge-base',
+      { includeUntracked: true, logger: recordingLogger() },
+    );
+
+    const notStaged = { staged: false, unstaged: true, untracked: false };
+    const staged = { staged: true, unstaged: false, untracked: false };
+    expect(result?.outcome).toBe('compared');
+    // .gitignore was committed before the branch point, so it is no change here; secret.env and
+    // build/ are ignored and never listed.
+    expect(Object.fromEntries((result?.files ?? []).map((f) => [f.path, f.origin]))).toEqual({
+      'both.txt': { committed: true, uncommitted: notStaged },
+      'committed.txt': { committed: true },
+      'edited.txt': { committed: false, uncommitted: notStaged },
+      'renamed-now.txt': { committed: false, uncommitted: { ...staged, headPath: 'renamed.txt' } },
+      'staged.txt': { committed: false, uncommitted: staged },
+      'untracked.txt': { committed: false, uncommitted: { staged: false, unstaged: false, untracked: true } },
+    });
+
+    // The two parts of both.txt read the right versions: committed v2 in HEAD, v3 on disk.
+    const bothFile = result?.files.find((f) => f.path === 'both.txt');
+    const committedPart = result === undefined || bothFile === undefined ? undefined : committedPartSides(result, bothFile);
+    const cli = new GitCli('git', recordingLogger());
+    expect(committedPart?.right.kind === 'revision' ? await cli.show(root, committedPart.right.revision, committedPart.right.path) : undefined).toBe('both v2\nline2\nline3\n');
+    const uncommittedPart = result === undefined || bothFile === undefined ? undefined : uncommittedPartSides(result, bothFile);
+    expect(uncommittedPart?.right).toEqual({ kind: 'file', absolutePath: path.join(root, 'both.txt') });
+  });
+});

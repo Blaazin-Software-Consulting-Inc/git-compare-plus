@@ -15,6 +15,7 @@ import {
   parseRefList,
   parseStashList,
   parseStatusCounts,
+  parseStatusPaths,
   parseTagList,
   parseWorktreeList,
 } from '../src/git/parsers';
@@ -370,6 +371,27 @@ describe('parseStashList', () => {
     expect(parseStashList(record('stash@{0}', 's', 'p', '1', 'custom') + '\0')[0]).toMatchObject({ message: 'custom', named: false, branch: undefined });
     expect(parseStashList(record('stash@{0}', 's', 'p', 'nope', 'x'))).toEqual([]);
     expect(parseStashList('')).toEqual([]);
+  });
+});
+
+describe('parseStatusPaths', () => {
+  it('keys each path by its state; a rename by its new and its original path', () => {
+    const out = ['M  staged.ts', ' M edited.ts', 'MM both.ts', '?? new dir/file.ts', 'R  new.ts', 'old.ts', ' D gone.ts', ''].join('\0');
+    const paths = parseStatusPaths(out);
+    expect(Object.fromEntries(paths)).toEqual({
+      'staged.ts': { staged: true, unstaged: false, untracked: false },
+      'edited.ts': { staged: false, unstaged: true, untracked: false },
+      'both.ts': { staged: true, unstaged: true, untracked: false },
+      'new dir/file.ts': { staged: false, unstaged: false, untracked: true },
+      'new.ts': { staged: true, unstaged: false, untracked: false, headPath: 'old.ts' },
+      'old.ts': { staged: true, unstaged: false, untracked: false, headPath: 'old.ts' },
+      'gone.ts': { staged: false, unstaged: true, untracked: false },
+    });
+  });
+
+  it('is empty for a clean worktree and ignores malformed records', () => {
+    expect(parseStatusPaths('').size).toBe(0);
+    expect(parseStatusPaths('M\0').size).toBe(0);
   });
 });
 

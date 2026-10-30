@@ -6,7 +6,7 @@
  * so "open this commit" looks the same wherever it is clicked.
  */
 import * as vscode from 'vscode';
-import { diffSides, type ComparisonResult, type RepoInfo } from '../comparison';
+import { diffSides, type ComparisonResult, type RepoInfo, type SideSource } from '../comparison';
 import type { GitCli } from '../git/gitCli';
 import type { ChangedFile, CommitEntry } from '../git/parsers';
 import type { Logger } from '../logger';
@@ -16,14 +16,23 @@ import { sideToUri } from './content';
 /**
  * Entries for `vscode.changes` (one multi-file diff editor): `[label uri, left, right]` per file,
  * with `undefined` for an empty side (added / deleted).
+ * @param sidesOf - which diff of each file to show: the whole change (default), or one part of it
+ *   (comparison.ts uncommittedPartSides); files it returns undefined for are left out.
  */
-export function multiDiffEntries(nodes: readonly { readonly result: ComparisonResult; readonly file: ChangedFile }[]): (vscode.Uri | undefined)[][] {
-  return nodes.map(({ result, file }) => {
-    const { left, right } = diffSides(result, file);
+export function multiDiffEntries(
+  nodes: readonly { readonly result: ComparisonResult; readonly file: ChangedFile }[],
+  sidesOf: (result: ComparisonResult, file: ChangedFile) => { left: SideSource; right: SideSource } | undefined = diffSides,
+): (vscode.Uri | undefined)[][] {
+  return nodes.flatMap(({ result, file }) => {
+    const sides = sidesOf(result, file);
+    if (sides === undefined) {
+      return [];
+    }
+    const { left, right } = sides;
     const leftUri = left.kind === 'empty' ? undefined : sideToUri(left, file.oldPath);
     const rightUri = right.kind === 'empty' ? undefined : sideToUri(right, file.path);
     // First element labels the entry; prefer the subject side, which exists unless deleted.
-    return [rightUri ?? leftUri, leftUri, rightUri];
+    return [[rightUri ?? leftUri, leftUri, rightUri]];
   });
 }
 

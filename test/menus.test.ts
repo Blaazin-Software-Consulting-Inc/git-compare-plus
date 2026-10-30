@@ -78,6 +78,19 @@ describe('changed-file context menu (Changes view)', () => {
     expect(shownFor('gitComparePlus.openFileAtBase')).toEqual(['modified', 'renamed', 'deleted']);
   });
 
+  it('keeps those rules when the file is both committed and uncommitted (`.both` suffix)', () => {
+    const both = (command: string) => statuses.filter((status) => shown(command, `changedFile.${status}.both`));
+    expect(both('gitComparePlus.openFile')).toEqual(['added', 'untracked', 'modified', 'renamed']);
+    expect(both('gitComparePlus.openFileAtBase')).toEqual(['modified', 'renamed', 'deleted']);
+  });
+
+  it.each(['gitComparePlus.openCommittedChange', 'gitComparePlus.openUncommittedChange'])('%s is offered only on files with both parts', (command) => {
+    expect(statuses.filter((status) => shown(command, `changedFile.${status}.both`))).toEqual([...statuses]);
+    expect(shownFor(command)).toEqual([]);
+    expect(shown(command, 'commit')).toBe(false);
+    expect(shown(command, 'commitsFile')).toBe(false);
+  });
+
   it('neither appears on commits or Repositories items', () => {
     for (const command of ['gitComparePlus.openFile', 'gitComparePlus.openFileAtBase']) {
       expect(shown(command, 'commit')).toBe(false);

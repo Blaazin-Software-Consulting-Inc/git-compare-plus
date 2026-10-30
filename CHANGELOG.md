@@ -9,6 +9,11 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 ### Comparing
 
+- Reviewing a worktree including its uncommitted edits marks each file that has uncommitted edits
+  with `✎`, and the Reviewing row counts them; hover a file for committed, uncommitted (staged,
+  not staged, untracked) or both. A file that is both opens either part on its own (**Open
+  Committed Changes**, **Open Uncommitted Changes**), and **Open All Uncommitted Changes** shows
+  every file's uncommitted edits in one diff. Files excluded by `.gitignore` are never listed.
 - Every comparison has two named sides: **Reviewing** (what changed, the right side of every
   diff) and **Against** (what it's compared with, the left side). A ⇄ button swaps them.
 - **Compare…** asks two questions, "What do you want to review?" and "Compare it with…". Both
@@ -30,8 +35,11 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 ### Worktrees and branches
 
-- Each branch is listed once: checked-out branches are their worktree's row under Worktrees,
-  and **Other Branches** lists the rest; remote branches say where their local copy is.
+- **Branches** lists every local branch, like `git branch`, saying where each checked-out one is
+  (`this window`, `repo folder`, `worktree .claude/worktrees/x`); clicking a checked-out branch
+  reviews the files in its folder, uncommitted edits included. **Worktrees** lists the worktrees
+  created from a branch; the repo folder is the repo row. Remote branches say where their local
+  copy is.
 - Each sidebar section's header summarises what it shows (e.g. `feature-x against origin/main ·
   14 files` on Changes).
 - **Open…** on a branch says what it will do before doing it: open its worktree in a new window,
@@ -56,7 +64,7 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 ### Commits
 
 - Worktree rows show uncommitted work (`✎ 3 uncommitted`, staged / unstaged / untracked in the
-  hover), counting each file in a new untracked folder; the repo row shows its main worktree's.
+  hover), counting each file in a new untracked folder; the repo row shows the repo folder's.
   Counts are re-checked when you return to the window and every minute, so edits in Claude Code's
   worktrees show up too. The Commits view lists a selected worktree's uncommitted changes above
   its commits.

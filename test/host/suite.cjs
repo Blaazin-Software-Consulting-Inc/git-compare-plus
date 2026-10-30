@@ -53,6 +53,31 @@ exports.run = async function run() {
   assert.equal(isOpen(), true, `Open in Source Control did not add ${linked}; Source Control lists: ${listed().join(', ') || 'nothing'}`);
   process.stdout.write('host smoke: Open in Source Control added the linked worktree\n');
 
+  // A file changed by a commit AND edited since: each part opens as its own diff. The result is
+  // built by hand (the comparison itself is covered by the vitest integration tests); this checks
+  // the commands, the diff URIs and the content provider in the real editor.
+  const result = {
+    repo: { name: path.basename(repoRoot), root: repoRoot, commonDir: path.join(repoRoot, '.git') },
+    subject: { kind: 'worktree', root: repoRoot, label: 'main', includeUncommitted: true },
+    outcome: 'compared',
+    mode: 'direct',
+    baseLabel: 'base',
+    baseRevision: process.env.HOST_SMOKE_BASE,
+    excludedUncommitted: {},
+    files: [],
+  };
+  const file = { status: 'modified', path: 'a.txt', oldPath: 'a.txt', origin: { committed: true, uncommitted: { staged: false, unstaged: true, untracked: false } } };
+  const openedSides = async (command) => {
+    await vscode.commands.executeCommand(command, { kind: 'file', result, file });
+    const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+    assert.ok(input instanceof vscode.TabInputTextDiff, `${command} did not open a diff`);
+    const read = async (uri) => (await vscode.workspace.openTextDocument(uri)).getText();
+    return [await read(input.original), await read(input.modified)];
+  };
+  assert.deepEqual(await openedSides('gitComparePlus.openCommittedChange'), ['a\n', 'a2\n'], 'committed part: Against ↔ HEAD');
+  assert.deepEqual(await openedSides('gitComparePlus.openUncommittedChange'), ['a2\n', 'a3\n'], 'uncommitted part: HEAD ↔ disk');
+  process.stdout.write('host smoke: committed and uncommitted parts open with the right contents\n');
+
   const registered = new Set(await vscode.commands.getCommands(true));
   const missing = manifest.contributes.commands.map((c) => c.command).filter((command) => !registered.has(command));
   assert.deepEqual(missing, [], `contributed commands not registered: ${missing.join(', ')}`);

@@ -19,6 +19,7 @@
  *
  * Pure (no `vscode` import) so the wording is unit-tested; changesView.ts renders the rows.
  */
+import { uncommittedFileCount } from '../changeOrigin';
 import { baseForcesDirect, type BaseSpec, type CompareMode, type ComparisonRequest, type ComparisonResult, type RefKind } from '../comparison';
 
 /** What the user asked for; the Changes view re-runs this when a header row is clicked. */
@@ -109,11 +110,13 @@ function subjectRow(setup: ComparisonSetup, results: readonly ComparisonResult[]
 
   const including = worktreeSubjects.every((r) => r.subject.kind === 'worktree' && r.subject.includeUncommitted);
   if (including) {
+    // How many of the listed files carry uncommitted edits (each marked ✎ in the list).
+    const marked = sum(results.map((r) => uncommittedFileCount(r.files)));
     return {
       role: 'subject',
       label,
-      description: `${single !== undefined ? 'worktree · ' : ''}INCLUDING uncommitted edits`,
-      tooltip: 'What changed (the right side of every diff): files as they are on disk, i.e. commits plus staged, unstaged and (per setting) untracked edits.\nClick to review committed work only.',
+      description: `${single !== undefined ? 'worktree · ' : ''}INCLUDING uncommitted edits${marked > 0 ? ` · ✎ ${plural(marked, 'file')}` : ''}`,
+      tooltip: 'What changed (the right side of every diff): files as they are on disk, i.e. commits plus staged, unstaged and (per setting) untracked edits.\n✎ marks the files with uncommitted edits; hover a file for committed, uncommitted or both.\nClick to review committed work only.',
       icon: 'edit',
       warning: false,
       command: 'gitComparePlus.toggleUncommitted',

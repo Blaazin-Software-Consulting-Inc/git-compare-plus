@@ -35,6 +35,10 @@
  * Fingerprints: each file also carries `fingerprint` (review/fingerprints.ts), the identity of its
  * diff that "reviewed" marks are stored against. Best-effort in the same way as line stats.
  *
+ * Origins: when the subject is the working tree, each file also carries `origin` (changeOrigin.ts):
+ * committed, uncommitted, or both, from `<left>..HEAD` and `git status` of the subject worktree.
+ * Best-effort in the same way: without it the files are listed unmarked (WARN).
+ *
  * Commits: `commits` lists the commits the comparison covers, `<left>..<subject>` (newest first,
  * capped at COMMIT_LIMIT): since the branch point in `merge-base` mode, or the subject's commits
  * the base lacks in `direct` mode. Uncommitted edits are not commits and never appear. Absent when
@@ -46,7 +50,8 @@
  * See also: src/git/gitCli.ts, src/views/changesHeader.ts (how these choices are shown).
  */
 import * as path from 'node:path';
-import type { ChangedFile, CommitEntry, LineStats } from './git/parsers';
+import { attachOrigins, touchedPaths } from './changeOrigin';
+import type { ChangedFile, CommitEntry, LineStats, UncommittedState } from './git/parsers';
 import type { Logger } from './logger';
 import { attachFingerprints, type FingerprintPort } from './review/fingerprints';
 
@@ -155,6 +160,7 @@ export interface ComparisonPort extends FingerprintPort {
   untrackedLineStats(root: string, relativePaths: readonly string[]): Promise<Map<string, LineStats>>;
   untracked(cwd: string): Promise<string[]>;
   uncommittedCount(root: string, includeUntracked: boolean): Promise<number>;
+  uncommittedPaths(root: string, includeUntracked: boolean): Promise<Map<string, UncommittedState>>;
   snapshotWorktree(root: string, includeUntracked: boolean): Promise<string>;
 }
 
@@ -274,7 +280,7 @@ async function runComparison(
 
     // Numstat runs alongside name-status: both diff the same sides, and the content diff behind
     // numstat is the slower of the two, so running it afterwards would roughly double the wait.
-    const [files, numstat, commits, branchPoint] = await Promise.all([
+    const [files, numstat, commits, branchPoint, origins] = await Promise.all([
       subjectSide.revision === undefined
         ? workingTreeChanges(git, cwd, baseRevision, options.includeUntracked)
         : git.diffNameStatus(cwd, baseRevision, subjectSide.revision),
@@ -286,6 +292,8 @@ async function runComparison(
       mode === 'merge-base' && resolvedBase.commitish !== undefined
         ? describeBranchPoint(git, cwd, resolvedBase.commitish, baseRevision, { repo: repo.name, base }, options.logger)
         : undefined,
+      // Only the working tree mixes commits with edits in progress; a revision is all committed.
+      subjectSide.revision === undefined ? originInputs(git, cwd, baseRevision, options.includeUntracked, { repo: repo.name }, options.logger) : undefined,
     ]);
     partial.commits = commits;
     partial.branchPoint = branchPoint;
@@ -297,7 +305,8 @@ async function runComparison(
         : bestEffortStats(() => git.untrackedLineStats(cwd, untrackedPaths), 'untrackedLineStats', { ...logContext, untrackedCount: untrackedPaths.length }, options.logger),
       withFingerprints(git, cwd, files, baseRevision, subjectSide.revision, logContext, options.logger),
     ]);
-    return finish('compared', sortByPath(attachLineStats(fingerprinted, numstat, untrackedStats)));
+    const withStats = attachLineStats(fingerprinted, numstat, untrackedStats);
+    return finish('compared', sortByPath(origins === undefined ? withStats : attachOrigins(withStats, origins.committed, origins.uncommitted)));
   } catch (error) {
     options.logger.error('comparison failed', error, {
       function: 'runComparison',
@@ -450,6 +459,36 @@ async function bestEffortStats(
   }
 }
 
+/**
+ * What `attachOrigins` needs: the paths the subject's commits changed since `baseRevision`, and its
+ * uncommitted paths. On failure log WARN and return undefined: the files are then listed without
+ * the uncommitted mark, which is cosmetic next to the file list itself.
+ */
+async function originInputs(
+  git: ComparisonPort,
+  cwd: string,
+  baseRevision: string,
+  includeUntracked: boolean,
+  context: Record<string, unknown>,
+  logger: Logger,
+): Promise<{ committed: Set<string>; uncommitted: Map<string, UncommittedState> } | undefined> {
+  try {
+    const [committed, uncommitted] = await Promise.all([git.diffNameStatus(cwd, baseRevision, 'HEAD'), git.uncommittedPaths(cwd, includeUntracked)]);
+    logger.debug('change origins loaded', { function: 'originInputs', ...context, cwd, baseRevision, committedCount: committed.length, uncommittedCount: uncommitted.size });
+    return { committed: touchedPaths(committed), uncommitted };
+  } catch (error) {
+    logger.warn('change origins unavailable; files shown without uncommitted marks', {
+      function: 'originInputs',
+      ...context,
+      cwd,
+      baseRevision,
+      includeUntracked,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
 /** List the commits `from..to`; on failure log WARN and return undefined (no Commits section). */
 async function commitList(
   git: ComparisonPort,
@@ -530,6 +569,47 @@ export type SideSource =
   | { readonly kind: 'empty' }
   | { readonly kind: 'file'; readonly absolutePath: string }
   | { readonly kind: 'revision'; readonly cwd: string; readonly revision: string; readonly path: string };
+
+/**
+ * The committed part of a file's change (Against side ↔ the worktree's HEAD), for a file whose
+ * change is both committed and uncommitted (`hasBothOrigins`). Undefined for any other file: its
+ * whole diff already is one part. HEAD is read live, so a commit made since the comparison ran
+ * shows its new state.
+ */
+export function committedPartSides(result: ComparisonResult, file: ChangedFile): { left: SideSource; right: SideSource } | undefined {
+  if (!hasBothOrigins(file) || result.subject.kind !== 'worktree') {
+    return undefined;
+  }
+  const { left } = diffSides(result, file);
+  return { left, right: { kind: 'revision', cwd: result.subject.root, revision: 'HEAD', path: file.origin?.uncommitted?.headPath ?? file.path } };
+}
+
+/**
+ * The uncommitted part of a file's change (HEAD ↔ the file on disk), the view Source Control
+ * gives. For a file with no committed part this equals its whole diff, so the Against side's
+ * version stands in for HEAD (they are the same content). Undefined for a file without
+ * uncommitted edits, or when the subject is not the working tree.
+ */
+export function uncommittedPartSides(result: ComparisonResult, file: ChangedFile): { left: SideSource; right: SideSource } | undefined {
+  const origin = file.origin;
+  if (origin?.uncommitted === undefined || result.subject.kind !== 'worktree' || result.subjectRevision !== undefined) {
+    return undefined;
+  }
+  const whole = diffSides(result, file);
+  if (!origin.committed) {
+    return whole;
+  }
+  // Committed, then deleted and re-created untracked: HEAD has no such file.
+  const left: SideSource = origin.uncommitted.untracked
+    ? { kind: 'empty' }
+    : { kind: 'revision', cwd: result.subject.root, revision: 'HEAD', path: origin.uncommitted.headPath ?? file.path };
+  return { left, right: whole.right };
+}
+
+/** True when a file's change is partly committed and partly uncommitted edits. */
+export function hasBothOrigins(file: ChangedFile): boolean {
+  return file.origin?.committed === true && file.origin.uncommitted !== undefined;
+}
 
 /**
  * Describe both sides of the diff for one changed file.

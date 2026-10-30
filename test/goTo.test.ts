@@ -14,9 +14,9 @@ describe('goToEntries', () => {
     expect(entries.map((e) => [e.kind, e.label, e.outcome])).toEqual([
       ['worktree', 'feature-x', 'this window'],
       ['worktree', 'main', 'opens in a new window'],
-      ['branch', 'main', 'opens main worktree in a new window'],
+      ['branch', 'main', 'opens repo folder in a new window'],
       ['branch', 'old', 'not checked out: switch to it or create a worktree'],
-      ['branch', 'origin/main', 'opens main worktree in a new window'],
+      ['branch', 'origin/main', 'opens repo folder in a new window'],
     ]);
   });
 
@@ -43,8 +43,8 @@ describe('windowWorktree', () => {
 });
 
 describe('statusText', () => {
-  it('says main worktree, or the short path of a linked one', () => {
-    expect(statusText({ repo: svc, worktree: worktrees[0] as WorktreeEntry })).toBe('main worktree');
+  it('says repo folder, or the short path of a linked one', () => {
+    expect(statusText({ repo: svc, worktree: worktrees[0] as WorktreeEntry })).toBe('repo folder');
     expect(statusText({ repo: svc, worktree: worktrees[1] as WorktreeEntry })).toBe('.wt/x');
   });
 });

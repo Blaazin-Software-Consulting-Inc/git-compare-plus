@@ -37,7 +37,7 @@ describe('sideChoices', () => {
   it('puts worktrees open in this window under This window, matching paths loosely', () => {
     const choices = sideChoices(inputs({ windowFolders: ['/r/.wt/x/'] }));
     expect(choices.filter((c) => c.group === 'window').map((c) => c.label)).toEqual(['feature-x']);
-    expect(choices.find((c) => c.label === 'main' && c.group === 'worktrees')?.description).toBe('worktree · main worktree');
+    expect(choices.find((c) => c.label === 'main' && c.group === 'worktrees')?.description).toBe('worktree · repo folder');
   });
 
   it('describes worktrees, branches with age, and tags with ref kinds', () => {

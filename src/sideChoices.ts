@@ -135,7 +135,7 @@ function suggestedChoices(inputs: SideChoiceInputs): SideChoice[] {
 function worktreeChoices(inputs: SideChoiceInputs): SideChoice[] {
   return inputs.worktrees.map((worktree): SideChoice => {
     const inWindow = isOneOf(worktree.path, inputs.windowFolders);
-    const where = samePath(worktree.path, inputs.repoRoot) ? 'main worktree' : displayPath(inputs.repoRoot, worktree.path);
+    const where = samePath(worktree.path, inputs.repoRoot) ? 'repo folder' : displayPath(inputs.repoRoot, worktree.path);
     return {
       group: inWindow ? 'window' : 'worktrees',
       icon: inWindow ? 'window' : 'folder',

@@ -29,6 +29,29 @@ export interface ChangedFile {
    * mark lapses as soon as either side changes. Absent when it could not be determined.
    */
   readonly fingerprint?: string;
+  /**
+   * Where the change comes from, when the subject is a worktree with its uncommitted edits
+   * included: its commits, its uncommitted edits, or both (src/changeOrigin.ts). Absent for
+   * committed-only subjects (everything is committed) and when it could not be determined.
+   */
+  readonly origin?: ChangeOrigin;
+}
+
+/** What a file's change is made of: commits since the left side, uncommitted edits, or both. */
+export interface ChangeOrigin {
+  /** Changed between the left side and the worktree's HEAD commit. */
+  readonly committed: boolean;
+  /** Its uncommitted state on disk; undefined when it has no uncommitted edits. */
+  readonly uncommitted?: UncommittedState;
+}
+
+/** One path's uncommitted state, from `git status`. Staged and unstaged can both be true. */
+export interface UncommittedState {
+  readonly staged: boolean;
+  readonly unstaged: boolean;
+  readonly untracked: boolean;
+  /** For an uncommitted rename or copy (`git mv`): the path the file has in HEAD. */
+  readonly headPath?: string;
 }
 
 /**
@@ -557,6 +580,38 @@ export function parseStatusCounts(stdout: string): StatusCounts {
     }
   }
   return { staged, unstaged, untracked, total };
+}
+
+/**
+ * Each uncommitted path of `git status --porcelain=v1 -z`, keyed by its current path (the new
+ * path of a rename or copy; the original path, which follows as an extra token, is keyed too, so a
+ * file found under either name is recognised). Same record format as `parseStatusCounts`.
+ */
+export function parseStatusPaths(stdout: string): Map<string, UncommittedState> {
+  const paths = new Map<string, UncommittedState>();
+  const tokens = stdout.split('\0');
+  for (let i = 0; i < tokens.length; i++) {
+    const record = tokens[i];
+    if (!record || record.length < 4) {
+      continue;
+    }
+    const x = record[0];
+    const y = record[1];
+    const untracked = x === '?' && y === '?';
+    const state: UncommittedState = { staged: !untracked && x !== ' ', unstaged: !untracked && y !== ' ', untracked };
+    if (x === 'R' || x === 'C' || y === 'R' || y === 'C') {
+      i++;
+      const original = tokens[i];
+      const renamed: UncommittedState = original ? { ...state, headPath: original } : state;
+      paths.set(record.slice(3), renamed);
+      if (original) {
+        paths.set(original, renamed);
+      }
+      continue;
+    }
+    paths.set(record.slice(3), state);
+  }
+  return paths;
 }
 
 /** Split NUL-terminated output (`git ls-files -z`) into its non-empty entries. */

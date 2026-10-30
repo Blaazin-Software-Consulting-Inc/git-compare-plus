@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { branchLocation, branchesNotCheckedOut, clickHint, localBranchName, locationText, openChoices, switchTargetFor, worktreeName } from '../src/branchLocation';
+import { branchLocation, branchRows, clickHint, linkedWorktrees, localBranchName, locationText, openChoices, switchTargetFor, worktreeName } from '../src/branchLocation';
 import type { RefEntry, WorktreeEntry } from '../src/git/parsers';
 
 const wt = (p: string, branch?: string): WorktreeEntry => ({ path: p, branch, head: 'abc', detached: branch === undefined, bare: false, prunable: false });
@@ -20,14 +20,40 @@ describe('branchLocation', () => {
   });
 });
 
-describe('branchesNotCheckedOut', () => {
-  it('lists each local branch once: checked-out ones belong to Worktrees, remotes elsewhere', () => {
+describe('branchRows', () => {
+  it('lists every local branch in order, like git branch; checked-out ones carry their worktree', () => {
     const refs = [ref('main'), ref('feature-x'), ref('old'), ref('origin/old', 'remote'), ref('newer')];
-    expect(branchesNotCheckedOut(refs, worktrees).map((r) => r.name)).toEqual(['old', 'newer']);
+    const rows = branchRows(refs, worktrees);
+    expect(rows.map((r) => [r.ref.name, r.worktree?.path])).toEqual([
+      ['main', ROOT],
+      ['feature-x', '/r/.wt/x'],
+      ['old', undefined],
+      ['newer', undefined],
+    ]);
+    // Not checked out: no worktree key at all, so the row is a plain branch.
+    expect('worktree' in (rows[2] ?? {})).toBe(false);
   });
 
-  it('keeps every local branch when no worktree has a branch (all detached)', () => {
-    expect(branchesNotCheckedOut([ref('a'), ref('b')], [wt('/r'), wt('/r/.wt/d')]).map((r) => r.name)).toEqual(['a', 'b']);
+  it('treats every branch as not checked out when all worktrees are detached, and handles no branches', () => {
+    expect(branchRows([ref('a'), ref('b')], [wt('/r'), wt('/r/.wt/d')]).map((r) => r.worktree)).toEqual([undefined, undefined]);
+    expect(branchRows([], worktrees)).toEqual([]);
+  });
+});
+
+describe('linkedWorktrees', () => {
+  it('leaves out the repo folder (main worktree), and stale or bare entries', () => {
+    const stale = { ...wt('/r/.wt/gone', 'gone'), prunable: true };
+    expect(linkedWorktrees([wt(ROOT, 'main'), wt('/r/.wt/x', 'feature-x'), stale]).map((w) => w.path)).toEqual(['/r/.wt/x']);
+  });
+
+  it('never promotes a linked worktree to main when the main entry is bare', () => {
+    const bareMain = { ...wt('/r.git'), bare: true };
+    expect(linkedWorktrees([bareMain, wt('/r/.wt/x', 'feature-x')]).map((w) => w.path)).toEqual(['/r/.wt/x']);
+  });
+
+  it('is empty for a repo without linked worktrees', () => {
+    expect(linkedWorktrees([wt(ROOT, 'main')])).toEqual([]);
+    expect(linkedWorktrees([])).toEqual([]);
   });
 });
 
@@ -35,7 +61,7 @@ describe('locationText', () => {
   it('says where a local branch lives, and nothing when it is not checked out (its group says so)', () => {
     expect(locationText({ kind: 'thisWindow', worktree: worktrees[0] as WorktreeEntry }, ref('main'), ROOT)).toBe('in this window');
     expect(locationText({ kind: 'otherWorktree', worktree: worktrees[1] as WorktreeEntry }, ref('feature-x'), ROOT)).toBe('in worktree .wt/x');
-    expect(locationText({ kind: 'otherWorktree', worktree: worktrees[0] as WorktreeEntry }, ref('main'), ROOT)).toBe('in main worktree');
+    expect(locationText({ kind: 'otherWorktree', worktree: worktrees[0] as WorktreeEntry }, ref('main'), ROOT)).toBe('in repo folder');
     expect(locationText({ kind: 'notCheckedOut' }, ref('old'), ROOT)).toBe('');
   });
 
@@ -45,7 +71,7 @@ describe('locationText', () => {
   });
 
   it('names worktrees', () => {
-    expect(worktreeName(wt(ROOT), ROOT)).toBe('main worktree');
+    expect(worktreeName(wt(ROOT), ROOT)).toBe('repo folder');
     expect(worktreeName(wt('/r/.wt/x'), ROOT)).toBe('worktree .wt/x');
   });
 });
@@ -62,10 +88,10 @@ describe('openChoices', () => {
     expect(createChoice?.detail).toContain('Your current work is untouched');
   });
 
-  it('names the main worktree when this window has none of the repo open, and mentions the new local branch for remotes', () => {
+  it('names the repo folder when this window has none of the repo open, and mentions the new local branch for remotes', () => {
     const [switchChoice] = openChoices(ref('origin/feature-z', 'remote'), wt(ROOT, 'main'), false, ROOT);
-    expect(switchChoice?.label).toBe('$(arrow-swap) Switch main worktree to feature-z');
-    expect(switchChoice?.detail).toContain('Changes the files in the main worktree');
+    expect(switchChoice?.label).toBe('$(arrow-swap) Switch repo folder to feature-z');
+    expect(switchChoice?.detail).toContain('Changes the files in the repo folder');
     expect(switchChoice?.detail).toContain('Creates local branch feature-z tracking origin/feature-z');
   });
 });

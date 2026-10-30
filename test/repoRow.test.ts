@@ -24,7 +24,7 @@ describe('repoRowDescription', () => {
 
 describe('repoRowUncommittedTooltip', () => {
   it('says which worktree the files are in', () => {
-    expect(repoRowUncommittedTooltip(dirty)).toBe('31 uncommitted files: 2 changed but not staged, 29 untracked (main worktree)');
+    expect(repoRowUncommittedTooltip(dirty)).toBe('31 uncommitted files: 2 changed but not staged, 29 untracked (repo folder)');
   });
 
   it('is undefined for a clean or unknown main worktree', () => {

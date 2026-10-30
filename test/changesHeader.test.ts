@@ -26,6 +26,13 @@ describe('subject row', () => {
     });
   });
 
+  it('counts the files with uncommitted edits (marked ✎) when there are any', () => {
+    const edited = { status: 'modified' as const, path: 'a.ts', oldPath: 'a.ts', origin: { committed: false, uncommitted: { staged: false, unstaged: true, untracked: false } } };
+    const committed = { status: 'modified' as const, path: 'b.ts', oldPath: 'b.ts', origin: { committed: true } };
+    expect(header(wt(true), { kind: 'default' }, { files: [edited, committed] }).subjectRow?.description).toBe('worktree · INCLUDING uncommitted edits · ✎ 1 file');
+    expect(header(wt(true), { kind: 'default' }, { files: [committed] }).subjectRow?.description).toBe('worktree · INCLUDING uncommitted edits');
+  });
+
   it('warns with a count when committed only and edits exist', () => {
     const { subjectRow } = header(wt(false), { kind: 'default' }, { excludedUncommitted: { subject: 3 } });
     expect(subjectRow).toMatchObject({ description: 'worktree · committed only · 3 uncommitted files NOT included', warning: true, icon: 'warning' });

@@ -1,6 +1,6 @@
 /**
  * worktreeStatus — a status bar item saying which worktree this window is on
- * (`$(list-tree) main worktree`, `$(list-tree) .claude/worktrees/x`), and the "Go to…" list it
+ * (`$(list-tree) repo folder`, `$(list-tree) .claude/worktrees/x`), and the "Go to…" list it
  * opens.
  *
  * Why next to the editor's own branch indicator: that one names the branch but not the folder,

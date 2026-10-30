@@ -32,13 +32,40 @@ export type BranchLocation =
   | { readonly kind: 'otherWorktree'; readonly worktree: WorktreeEntry }
   | { readonly kind: 'notCheckedOut' };
 
+/** One row of the "Branches" group: a local branch, and the worktree it is checked out in, if any. */
+export interface BranchRow {
+  readonly ref: RefEntry;
+  /** Set when the branch is checked out: the row then stands for that folder (see `branchRows`). */
+  readonly worktree?: WorktreeEntry;
+}
+
 /**
- * Local branches checked out in no worktree, in their given order: the "Other Branches" group.
- * A branch that is checked out is shown once, under Worktrees (its worktree row), not again here.
+ * Every local branch in its given order, like `git branch`: the "Branches" group. Developers look
+ * for `main` among the branches, not among worktrees, even when it is checked out in the repo
+ * folder. A checked-out branch carries its worktree, and its row stands for that folder (files on
+ * disk, uncommitted edits included), the same as clicking that worktree, so a click on `main`
+ * shows the work you have in progress on it.
+ * @param worktrees - the repo's usable worktrees; a branch held by a stale one is a plain branch.
  */
-export function branchesNotCheckedOut(refs: readonly RefEntry[], worktrees: readonly WorktreeEntry[]): RefEntry[] {
-  const checkedOut = new Set(worktrees.flatMap((w) => (w.branch === undefined ? [] : [w.branch])));
-  return refs.filter((ref) => ref.kind === 'local' && !checkedOut.has(ref.name));
+export function branchRows(refs: readonly RefEntry[], worktrees: readonly WorktreeEntry[]): BranchRow[] {
+  const holders = new Map(worktrees.flatMap((w) => (w.branch === undefined ? [] : [[w.branch, w] as const])));
+  return refs
+    .filter((ref) => ref.kind === 'local')
+    .map((ref) => {
+      const worktree = holders.get(ref.name);
+      return worktree === undefined ? { ref } : { ref, worktree };
+    });
+}
+
+/**
+ * The "Worktrees" group: the worktrees someone created (`git worktree add`, Claude's
+ * `.claude/worktrees/*`), i.e. every usable one except the main worktree. The main worktree is the
+ * repo folder itself, already the repo row, and its branch is listed under Branches.
+ * @param worktrees - git's list in display order, main first (unfiltered, so a bare main entry
+ *   is dropped rather than promoting a linked worktree to "main").
+ */
+export function linkedWorktrees(worktrees: readonly WorktreeEntry[]): WorktreeEntry[] {
+  return worktrees.slice(1).filter((w) => !w.bare && !w.prunable);
 }
 
 /** The local branch name a ref stands for: itself, or `x` for remote `origin/x`. */
@@ -60,8 +87,8 @@ export function branchLocation(ref: RefEntry, worktrees: readonly WorktreeEntry[
 }
 
 /**
- * Row text for a location: `in this window`, `in main worktree`, `in worktree .wt/x`, or nothing
- * when it is not checked out (the "Other Branches" group already says so). Remote branches say
+ * Row text for a location: `in this window`, `in repo folder`, `in worktree .wt/x`, or nothing
+ * when it is not checked out. Remote branches say
  * "local copy" so the row does not suggest the remote branch itself is checked out.
  */
 export function locationText(location: BranchLocation, ref: RefEntry, repoRoot: string): string {
@@ -72,15 +99,18 @@ export function locationText(location: BranchLocation, ref: RefEntry, repoRoot: 
     case 'otherWorktree':
       return `${prefix}in ${worktreeName(location.worktree, repoRoot)}`;
     case 'notCheckedOut':
-      // Every row of "Other Branches" is not checked out, and a remote branch without a local copy
-      // is the normal case: saying so on every row is noise.
+      // Most branches are not checked out, and a remote branch without a local copy is the normal
+      // case: saying so on every row is noise.
       return '';
   }
 }
 
-/** `main worktree`, or `worktree <short path>`. */
+/**
+ * `repo folder` (the main worktree: "main worktree" read as "the worktree of branch main"), or
+ * `worktree <short path>`.
+ */
 export function worktreeName(worktree: WorktreeEntry, repoRoot: string): string {
-  return samePath(worktree.path, repoRoot) ? 'main worktree' : `worktree ${displayPath(repoRoot, worktree.path)}`;
+  return samePath(worktree.path, repoRoot) ? 'repo folder' : `worktree ${displayPath(repoRoot, worktree.path)}`;
 }
 
 /** One way to open a branch that is not checked out; `detail` is the consequence, in full. */
@@ -107,7 +137,7 @@ export function openChoices(ref: RefEntry, switchTarget: WorktreeEntry, inWindow
     {
       action: 'switch',
       label: `$(arrow-swap) Switch ${target} to ${local}`,
-      detail: `Changes the files in ${displayPath(repoRoot, switchTarget.path) || 'the main worktree'}. Refused if it has uncommitted changes; nothing is stashed for you.${creates}`,
+      detail: `Changes the files in ${displayPath(repoRoot, switchTarget.path) || 'the repo folder'}. Refused if it has uncommitted changes; nothing is stashed for you.${creates}`,
       worktree: switchTarget,
     },
     {

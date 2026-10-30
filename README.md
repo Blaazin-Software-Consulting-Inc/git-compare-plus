@@ -70,7 +70,7 @@ second question.
 change that part, and the comparison re-runs:
 
 ```
-✎  Reviewing: feature-x    worktree · INCLUDING uncommitted edits          ← click: include / exclude
+✎  Reviewing: feature-x    worktree · INCLUDING uncommitted edits · ✎ 3 files  ← click: include / exclude
 ⇄  Against: origin/master  default branch · click to change               ← click or its pick button: something else
 ⑂  Showing: changes since branch point a1b2c3d · the tip of origin/master ← click: switch mode
 ```
@@ -92,6 +92,19 @@ added lines, red for removed, grey when fewer than five lines changed. Hover a f
 counts in colour and in words. Binary files keep their normal file-type icon. The view title and
 each repo row show the totals. When several repos are compared, files are grouped by repo; repos with no changes are hidden and counted at the top.
 Click a file to open its diff in the editor.
+
+**Committed or uncommitted:** when you review a worktree including its uncommitted edits, each
+file with uncommitted edits starts with `✎` (`✎  +4 −1  src`), the same mark the Repositories
+rows use, and the Reviewing row counts them (`✎ 3 files`). Hover a file to see which it is:
+committed only, uncommitted only (staged, not staged, or untracked), or committed plus further
+uncommitted edits. Clicking a file still shows its whole change. For a file that is both
+committed and edited since, right-click → **Open Committed Changes** shows only what its commits
+changed (Against side ↔ `HEAD`), and **Open Uncommitted Changes** only the edits not committed yet
+(`HEAD` ↔ the file on disk, as Source Control shows it). The `…` menu's **Open All Uncommitted
+Changes** opens every file's uncommitted edits in one diff. Files your `.gitignore` excludes
+are never listed, committed or not; a file that was committed before being added to `.gitignore`
+is still tracked by git, so its changes still show. A branch, or a worktree reviewed as
+"committed only", has no marks: everything in it is committed.
 
 **Commits:** a collapsed **Commits** group (per repo) lists the commits the comparison covers,
 newest first: since the branch point, or the commits the base doesn't have in "all differences"
@@ -167,7 +180,7 @@ the edited files, which `git gc` cleans up later.
 
 ### Repositories, worktrees and branches
 
-<img src="docs/images/2-repositories.png" alt="Repositories: worktrees, other branches with ahead counts, and a stash with its files" width="360" align="right">
+<img src="docs/images/2-repositories.png" alt="Repositories: branches with ahead counts, a worktree, and a stash with its files" width="360" align="right">
 
 **Repositories**: every repo in the window. In a single-repo window it opens already expanded.
 Each section's header says what it holds: Repositories names the repo (or how many), Changes names
@@ -175,18 +188,27 @@ both sides (`feature-x against origin/main · 14 files · +320 −45`), and Comm
 branch or file they're showing.
 
 ```
-orders-service     feature/login-retry
-├─ Worktrees  2
-│  ├─ feature/login-retry   main worktree
-│  └─ claude/feature-x             .claude/worktrees/feature-x
-├─ Other Branches  12
+orders-service     main · ✎ 3 uncommitted · against origin/main     ← the repo folder
+├─ Branches  14                      every local branch, like `git branch`
+│  ├─ main               this window · ✎ 3 uncommitted · repo folder
+│  ├─ claude/feature-x   worktree .claude/worktrees/feature-x
+│  └─ old-spike          3 weeks ago
+├─ Worktrees  1                      the worktrees you created
+│  └─ claude/feature-x   .claude/worktrees/feature-x
 ├─ Remote Branches  31
 └─ Stashes  2
 ```
 
+**Branches** lists every local branch, including the ones checked out somewhere. A checked-out
+branch says where (`this window`, `repo folder`, `worktree .claude/worktrees/x`) and stands for
+that folder: clicking it reviews the files there, uncommitted edits included. **Worktrees** lists
+only the worktrees created from a branch (`git worktree add`, Claude Code's
+`.claude/worktrees/*`). The repo folder you cloned is git's *main worktree*; it's the repo row
+itself, and its branch is under Branches. So a branch in a created worktree appears in both
+groups, with the same behaviour in each.
+
 **Order:** in each group, the repo's default branch comes first, then `main`, then `master`.
-Everything else follows, newest commit first. The main worktree is always first under Worktrees.
-Each worktree and branch shows the age of its latest commit (`3 days ago`). The Compare pickers
+Everything else follows, newest commit first. Each worktree and branch shows the age of its latest commit (`3 days ago`). The Compare pickers
 list branches in the same order.
 
 **Ahead/behind:** each worktree and branch also shows how far it has moved from the repo's
@@ -197,8 +219,8 @@ last commit.
 
 **Uncommitted work:** a worktree with uncommitted files says so on its row (`✎ 3 uncommitted`);
 hover for how many are staged, changed but not staged, and untracked. Every file counts, including
-each file in a new untracked folder. The repo's own row shows the same marker for its main
-worktree (the folder you cloned), so your local checkout's work is visible without expanding the
+each file in a new untracked folder. The repo's own row shows the same marker for the repo
+folder (the folder you cloned), so your local checkout's work is visible without expanding the
 repo. The counts refresh with the repo (after a commit, a branch switch, a fetch, or Refresh), and
 are re-counted when you come back to the window, when the view becomes visible, and every minute
 while it is: edits in worktrees the editor's Source Control doesn't track (such as Claude Code's
@@ -207,7 +229,7 @@ Older git (Apple's bundled git can lag behind) counts local branches and detache
 by one, and remote branches show no counts.
 
 - **Click** a repo, worktree or branch row: Changes reviews it against the repo's **default
-  Against**, and Commits lists its commits (a repo row stands for its main worktree). Arrowing
+  Against**, and Commits lists its commits (a repo row stands for the repo folder). Arrowing
   through rows keeps the focus in Repositories; each view updates once you stop. Selecting several
   rows (to delete them, or for Compare These Two) updates neither.
 - **Compare button** (hover over a row): the same as a click, and it brings Changes into view.
@@ -236,10 +258,8 @@ Each repo row shows when it was last fetched (`fetched 3 h ago`). If that's long
 `staleFetchHours`, the row turns yellow, because comparisons with `origin/…` may be missing newer
 commits.
 
-**Each branch is listed once.** A branch checked out in a worktree is that worktree's row under
-**Worktrees** (the worktree open in this window is marked `this window`). **Other Branches** lists
-the local branches checked out nowhere. Remote branches say where their local copy is, if there is
-one (`local copy in this window`, `local copy in worktree .wt/x`).
+Remote branches say where their local copy is, if there is one (`local copy in this window`,
+`local copy in worktree .wt/x`).
 
 **Open…** (a button on each branch row, or right-click) does one thing, decided by where the branch
 lives, and tells you before it does it:
@@ -252,7 +272,7 @@ lives, and tells you before it does it:
 
 Opening a remote branch with no local copy creates the local branch, tracking the remote one.
 
-**Status bar:** `main worktree` or `.claude/worktrees/x` (with a tree icon) shows which
+**Status bar:** `repo folder` or `.claude/worktrees/x` (with a tree icon) shows which
 worktree this window is on. The editor's own branch indicator names the branch, not the folder.
 Click it for **Go to…**: every worktree and branch of this repo, each saying what picking it will
 do ("this window", "opens in a new window", "not checked out: switch to it or create a
