@@ -7,6 +7,11 @@
 # store tokens (VSCE_PAT, OVSX_PAT) and can require an approval. CONTRIBUTING.md#releasing has
 # the one-time setup and the checklist.
 #
+# It can also be started by hand ON THE TAG (`gh workflow run release.yml --ref v1.0.0`, or the
+# Actions tab with the tag picked), for when GitHub does not start it for the tag push. Started
+# on a branch instead, the release check fails before anything is published: the ref name is
+# not `v<version>`.
+#
 # Re-running after a partial failure is safe: both stores skip a version they already have, and
 # the GitHub Release is created only if it does not exist yet.
 name: Release
@@ -14,6 +19,7 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read

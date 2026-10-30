@@ -175,6 +175,11 @@ during one.
    ```bash
    git push origin v1.0.0
    ```
+   If no Release run appears in the Actions tab within a minute (GitHub has not started
+   push-triggered workflows in this repo so far), start it on the tag:
+   ```bash
+   gh workflow run release.yml --ref v1.0.0
+   ```
 5. Approve the `release` environment when the workflow asks (after its CI passes).
 6. Check the listings: https://marketplace.visualstudio.com/items?itemName=blaazinsoftware.git-compare-plus
    and https://open-vsx.org/extension/blaazinsoftware/git-compare-plus (the README images come
