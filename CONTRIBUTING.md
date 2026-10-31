@@ -146,19 +146,23 @@ so the checks come first.
 
 ### One-time setup
 
-1. **Marketplace publisher.** At https://marketplace.visualstudio.com/manage, create the
-   publisher `blaazinsoftware` (it must match `publisher` in `package.json`). Create an Azure
-   DevOps personal access token with **Organization: All accessible organizations** and the
-   scope **Marketplace → Manage**.
+1. **Marketplace publisher and Trusted Publishing.** At https://marketplace.visualstudio.com/manage,
+   create the publisher `blaazinsoftware` (it must match `publisher` in `package.json`). On the
+   publisher's **Trusted Publishing** page, create a policy: repository owner
+   `Blaazin-Software-Consulting-Inc`, repository `git-compare-plus`, workflow `release.yml`,
+   environment `release`. The release job then publishes with `vsce publish --oidc`: GitHub
+   issues it a one-time OIDC token, which the Marketplace exchanges for a credential valid
+   15 minutes. No Marketplace token is stored anywhere. Renaming the workflow file or the
+   environment breaks publishing until the policy is updated to match.
 2. **Open VSX namespace.** Sign in at https://open-vsx.org with GitHub, sign the Eclipse
    Foundation publisher agreement (profile page), and create an access token. Create the
    namespace once, with the token in the `OVSX_PAT` environment variable (not on the command
    line, where it lands in shell history): `./node_modules/.bin/ovsx create-namespace blaazinsoftware`.
 3. **GitHub environment.** In the repo's **Settings → Environments**, create `release`, add
    yourself as a required reviewer (each release then waits for an approval before publishing),
-   and add the two tokens as environment secrets `VSCE_PAT` and `OVSX_PAT`.
+   and add the Open VSX token as the environment secret `OVSX_PAT`.
 
-Both tokens expire (Azure DevOps tokens after at most a year): renew them before a release, not
+The Open VSX token is the only stored credential: if it expires, renew it before a release, not
 during one.
 
 ### Each release

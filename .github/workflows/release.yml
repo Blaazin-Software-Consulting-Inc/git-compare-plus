@@ -4,8 +4,10 @@
 # Order: the full CI (all three platforms, host test, benchmark) must pass on the tagged commit;
 # then scripts/release-notes.mjs checks the tag, package.json and CHANGELOG agree; only then does
 # anything get published. The publish job runs in the `release` environment, which holds the
-# store tokens (VSCE_PAT, OVSX_PAT) and can require an approval. CONTRIBUTING.md#releasing has
-# the one-time setup and the checklist.
+# Open VSX token (OVSX_PAT) and can require an approval. The Visual Studio Marketplace needs no
+# stored token: the publisher's Trusted Publishing policy accepts this workflow's GitHub OIDC
+# token (repository, `release.yml` and the `release` environment must all match the policy).
+# CONTRIBUTING.md#releasing has the one-time setup and the checklist.
 #
 # It can also be started by hand ON THE TAG (`gh workflow run release.yml --ref v1.0.0`, or the
 # Actions tab with the tag picked), for when GitHub does not start it for the tag push. Started
@@ -39,11 +41,12 @@ jobs:
     environment: release
     permissions:
       contents: write # create the GitHub Release
+      id-token: write # the OIDC token vsce exchanges for a short-lived Marketplace credential
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - name: Check the tag, package.json and CHANGELOG agree
@@ -51,9 +54,7 @@ jobs:
       - run: npm run package
       - run: npm run budget
       - name: Publish to the Visual Studio Marketplace
-        run: ./node_modules/.bin/vsce publish --packagePath git-compare-plus.vsix --skip-duplicate
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: ./node_modules/.bin/vsce publish --oidc --packagePath git-compare-plus.vsix --skip-duplicate
       - name: Publish to Open VSX
         run: ./node_modules/.bin/ovsx publish --packagePath git-compare-plus.vsix --skip-duplicate
         env:
