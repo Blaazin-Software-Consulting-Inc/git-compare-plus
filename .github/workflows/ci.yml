@@ -23,7 +23,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      # Node 22: @vscode/vsce 4 (packaging, and --oidc publishing in release.yml) requires it.
+      # Node 22: @vscode/vsce 4 (packaging) and ovsx 1.3 (publishing in release.yml) require it.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
