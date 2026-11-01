@@ -4,10 +4,12 @@
 # Order: the full CI (all three platforms, host test, benchmark) must pass on the tagged commit;
 # then scripts/release-notes.mjs checks the tag, package.json and CHANGELOG agree; only then does
 # anything get published. The publish job runs in the `release` environment, which can require
-# an approval. No store token is stored anywhere: both the Visual Studio Marketplace and Open VSX
-# exchange this workflow's GitHub OIDC token for a credential valid a few minutes, through a
-# trusted-publisher entry on each store (repository, `release.yml` and the `release` environment
-# must all match it). CONTRIBUTING.md#releasing has the one-time setup and the checklist.
+# an approval. Both stores accept this workflow's GitHub OIDC token, exchanged for a credential
+# valid a few minutes, through a trusted-publisher entry on each store (repository, `release.yml`
+# and the `release` environment must all match it). Open VSX only accepts that entry once the
+# extension exists there, so its first version is published with the `OVSX_PAT` environment
+# secret; once the trusted publisher is registered, delete the secret and ovsx uses OIDC.
+# CONTRIBUTING.md#releasing has the one-time setup and the checklist.
 #
 # It can also be started by hand ON THE TAG (`gh workflow run release.yml --ref v1.0.0`, or the
 # Actions tab with the tag picked), for when GitHub does not start it for the tag push. Started
@@ -56,8 +58,11 @@ jobs:
       - name: Publish to the Visual Studio Marketplace
         run: ./node_modules/.bin/vsce publish --oidc --packagePath git-compare-plus.vsix --skip-duplicate
       - name: Publish to Open VSX
-        # --trusted-publishing fails if no OIDC token is available rather than looking for a token.
-        run: ./node_modules/.bin/ovsx publish --trusted-publishing --packagePath git-compare-plus.vsix --skip-duplicate
+        # ovsx uses OVSX_PAT when it is non-empty, and otherwise exchanges the OIDC token. A missing
+        # secret expands to an empty string, so deleting the secret switches to trusted publishing.
+        run: ./node_modules/.bin/ovsx publish --packagePath git-compare-plus.vsix --skip-duplicate
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
       - name: Create the GitHub Release
         run: |
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then

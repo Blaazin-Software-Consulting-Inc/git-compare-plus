@@ -153,22 +153,30 @@ so the checks come first.
    environment `release`. The release job then publishes with `vsce publish --oidc`: GitHub
    issues it a one-time OIDC token, which the Marketplace exchanges for a credential valid
    15 minutes.
-2. **Open VSX namespace and trusted publisher.** Sign in at https://open-vsx.org with GitHub
-   and sign the publisher agreement (profile page). Signing it needs an Eclipse Foundation
-   account with that same GitHub account linked (accounts.eclipse.org → Linked Accounts); once
-   signed, the link can only be changed through license@eclipse.org. Create the namespace once
-   with a temporary access token, kept out of shell history and deleted afterwards:
-   `read -s OVSX_PAT && export OVSX_PAT && ./node_modules/.bin/ovsx create-namespace blaazinsoftware`.
-   Then, under https://open-vsx.org/user-settings/trusted-publishers, register the same
-   repository, workflow and environment as the Marketplace policy. The release job publishes
-   with `ovsx publish --trusted-publishing`.
+2. **Open VSX namespace, first-release token, and trusted publisher.** Sign in at
+   https://open-vsx.org with GitHub and sign the publisher agreement (profile page). Signing it
+   needs an Eclipse Foundation account with that same GitHub account linked
+   (accounts.eclipse.org → Linked Accounts); once signed, the link can only be changed through
+   license@eclipse.org. Create the namespace `blaazinsoftware` (Settings → Namespaces → Create
+   namespace). That makes you a contributor, not the owner: claim ownership with a public issue at
+   https://github.com/EclipseFdn/open-vsx.org/issues (until it is granted, the extension shows as
+   unverified). Open VSX registers a trusted publisher only for an extension that already exists
+   and only by the namespace owner, so:
+   - **Before the first release:** create an access token (Settings → Access Tokens) and store
+     it as the `release` environment secret `OVSX_PAT`:
+     `gh secret set OVSX_PAT --env release -R Blaazin-Software-Consulting-Inc/git-compare-plus`.
+   - **After the first release and the ownership grant:** under
+     https://open-vsx.org/user-settings/trusted-publishers, register the same repository,
+     workflow and environment as the Marketplace policy, then delete the token on Open VSX and the
+     secret (`gh secret delete OVSX_PAT --env release -R Blaazin-Software-Consulting-Inc/git-compare-plus`).
+     The release job then publishes with OIDC: ovsx exchanges it whenever `OVSX_PAT` is empty.
 3. **GitHub environment.** In the repo's **Settings → Environments**, create `release` and add
    yourself as a required reviewer (each release then waits for an approval before publishing).
-   It holds no secrets.
+   After the switch above it holds no secrets.
 
-No store credential is stored, so nothing expires between releases. Renaming `release.yml` or
-the `release` environment breaks publishing to both stores until both trusted-publisher entries
-are updated to match.
+Once both trusted publishers are registered, no store credential is stored, so nothing expires
+between releases. Renaming `release.yml` or the `release` environment breaks publishing to both
+stores until both trusted-publisher entries are updated to match.
 
 ### Each release
 
