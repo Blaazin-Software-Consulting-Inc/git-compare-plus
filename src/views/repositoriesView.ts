@@ -3,10 +3,10 @@
  *
  * Shape:
  *   repo                       (the repo folder = main worktree; description = checked-out branch)
- *   ├─ Branches (n)            every local branch, like `git branch`; a checked-out one is a
- *   │                          worktree node standing for its folder (branchRows)
- *   ├─ Worktrees (n)           the worktrees someone created, e.g. `.claude/worktrees/*`; not the
- *   │                          repo folder (linkedWorktrees). Their branches are under Branches too
+ *   ├─ Branches (n)            local branches outside created worktrees; the repo folder's branch
+ *   │                          is a worktree node standing for that folder (branchRows)
+ *   ├─ Worktrees (n)           the worktrees someone created, e.g. `.claude/worktrees/*`, labelled
+ *   │                          with their branch; not the repo folder (linkedWorktrees)
  *   ├─ Remote Branches (n)     remote-tracking branches (collapsed)
  *   └─ Stashes (n)             the repo's stashes (collapsed); each expands to its files
  *
@@ -23,7 +23,9 @@
  * given a second worktree (git refuses), so those menu entries are hidden for it.
  *
  * Why this split: developers look for `main` among the branches even when it is checked out in
- * the repo folder, and think of a worktree as something they create from a branch.
+ * the repo folder, and think of a worktree as something they create from a branch, where that
+ * branch then lives. Each branch therefore appears once: under Worktrees when a created worktree
+ * has it checked out, otherwise under Branches.
  *
  * Order (treeOrder.ts): default branch, then main/master, then newest commit first. Each worktree/branch shows the age of its latest commit, and how many
  * commits it is ahead of / behind the repo's default Against (`↑3 ↓12`, aheadBehind.ts).
@@ -516,10 +518,9 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
       return linkedWorktrees(details.worktrees).map((worktree) => ({ kind: 'worktree', repo, worktree, isMain: false, group }));
     }
     if (group === 'branches') {
-      // Main = git's first entry (kept first by sortWorktrees), compared by path.
-      const mainPath = details.worktrees[0]?.path;
-      return branchRows(details.refs, usableWorktrees(details.worktrees)).map(({ ref, worktree }): RepoTreeNode =>
-        worktree === undefined ? { kind: 'branch', repo, ref } : { kind: 'worktree', repo, worktree, isMain: worktree.path === mainPath, group },
+      // branchRows only attaches the repo folder (main worktree), so a worktree row here is main.
+      return branchRows(details.refs, details.worktrees).map(({ ref, worktree }): RepoTreeNode =>
+        worktree === undefined ? { kind: 'branch', repo, ref } : { kind: 'worktree', repo, worktree, isMain: true, group },
       );
     }
     return details.refs.filter((r) => r.kind === 'remote').map((ref) => ({ kind: 'branch', repo, ref }));
@@ -617,7 +618,7 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
         : group === 'stashes'
           ? details.stashes.length
           : group === 'branches'
-            ? details.refs.filter((r) => r.kind === 'local').length
+            ? branchRows(details.refs, details.worktrees).length
             : details.refs.filter((r) => r.kind === 'remote').length;
     // Remote branches and stashes are long or rarely needed; keep them out of the way.
     const state = group === 'remotes' || group === 'stashes' ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded;
@@ -632,8 +633,8 @@ export class RepositoriesProvider implements vscode.TreeDataProvider<RepoTreeNod
 
 // What each group holds; the Branches/Worktrees split is not the same in every git tool.
 const GROUP_TOOLTIPS: Record<GroupKind, string> = {
-  branches: 'Every local branch, like `git branch`. A checked-out branch stands for its folder: clicking it reviews the files there, uncommitted edits included.',
-  worktrees: 'Worktrees created from a branch (git worktree add, Claude Code). The repo folder itself is the repo row above.',
+  branches: "Local branches, except those checked out in a created worktree (listed under Worktrees). The repo folder's branch stands for that folder: clicking it reviews the files there, uncommitted edits included.",
+  worktrees: 'Worktrees created from a branch (git worktree add, Claude Code), each labelled with its branch, which is listed here only. The repo folder itself is the repo row above.',
   remotes: 'Remote-tracking branches, as of the last fetch.',
   stashes: "The repo's stashes, newest first.",
 };
@@ -659,9 +660,9 @@ function worktreeItem(
   const isBase = baseMatches(base, { worktreeRoot: worktree.path });
   item.id = `${group}:worktree:${worktree.path}`;
   item.iconPath = new vscode.ThemeIcon(isBase ? 'target' : inWindow ? 'window' : group === 'branches' ? 'git-branch' : 'folder');
-  // Under Branches the row is a branch, so it says which folder; under Worktrees the label is
+  // Under Branches the only worktree row is the repo folder's branch; under Worktrees the label is
   // already a worktree, so the short path is enough.
-  const location = isMain ? 'repo folder' : group === 'branches' ? `worktree ${displayPath(repo.root, worktree.path)}` : displayPath(repo.root, worktree.path);
+  const location = isMain ? 'repo folder' : displayPath(repo.root, worktree.path);
   // Age of the latest commit, so the newest-first order is visible.
   const age = committedAt === undefined ? undefined : formatAge(committedAt, Date.now());
   // Under Branches, where it is checked out leads (as on the plain branch rows next to it), so a

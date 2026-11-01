@@ -189,23 +189,21 @@ branch or file they're showing.
 
 ```
 orders-service     main · ✎ 3 uncommitted · against origin/main     ← the repo folder
-├─ Branches  14                      every local branch, like `git branch`
+├─ Branches  13                      local branches outside created worktrees
 │  ├─ main               this window · ✎ 3 uncommitted · repo folder
-│  ├─ claude/feature-x   worktree .claude/worktrees/feature-x
 │  └─ old-spike          3 weeks ago
-├─ Worktrees  1                      the worktrees you created
+├─ Worktrees  1                      the worktrees you created, by branch
 │  └─ claude/feature-x   .claude/worktrees/feature-x
 ├─ Remote Branches  31
 └─ Stashes  2
 ```
 
-**Branches** lists every local branch, including the ones checked out somewhere. A checked-out
-branch says where (`this window`, `repo folder`, `worktree .claude/worktrees/x`) and stands for
-that folder: clicking it reviews the files there, uncommitted edits included. **Worktrees** lists
-only the worktrees created from a branch (`git worktree add`, Claude Code's
-`.claude/worktrees/*`). The repo folder you cloned is git's *main worktree*; it's the repo row
-itself, and its branch is under Branches. So a branch in a created worktree appears in both
-groups, with the same behaviour in each.
+Each branch appears in one place. **Worktrees** lists the worktrees created from a branch
+(`git worktree add`, Claude Code's `.claude/worktrees/*`), each named after the branch checked out
+in it; that branch lives there now, so it isn't repeated under Branches. **Branches** lists every
+other local branch. The repo folder you cloned is git's *main worktree*: it's the repo row itself,
+and its branch (usually `main`) stays under Branches, marked `repo folder`. Clicking that row, or
+a worktree row, reviews the files in the folder, uncommitted edits included.
 
 **Order:** in each group, the repo's default branch comes first, then `main`, then `master`.
 Everything else follows, newest commit first. Each worktree and branch shows the age of its latest commit (`3 days ago`). The Compare pickers

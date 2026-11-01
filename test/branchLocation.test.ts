@@ -21,22 +21,38 @@ describe('branchLocation', () => {
 });
 
 describe('branchRows', () => {
-  it('lists every local branch in order, like git branch; checked-out ones carry their worktree', () => {
+  it('lists local branches in order; the repo folder branch carries it; created-worktree branches are left out', () => {
     const refs = [ref('main'), ref('feature-x'), ref('old'), ref('origin/old', 'remote'), ref('newer')];
     const rows = branchRows(refs, worktrees);
+    // feature-x is checked out in /r/.wt/x, so it is listed under Worktrees only.
     expect(rows.map((r) => [r.ref.name, r.worktree?.path])).toEqual([
       ['main', ROOT],
-      ['feature-x', '/r/.wt/x'],
       ['old', undefined],
       ['newer', undefined],
     ]);
     // Not checked out: no worktree key at all, so the row is a plain branch.
-    expect('worktree' in (rows[2] ?? {})).toBe(false);
+    expect('worktree' in (rows[1] ?? {})).toBe(false);
   });
 
-  it('treats every branch as not checked out when all worktrees are detached, and handles no branches', () => {
+  it('keeps a branch held only by a stale worktree as a plain branch', () => {
+    const stale = { ...wt('/r/.wt/gone', 'gone'), prunable: true };
+    expect(branchRows([ref('main'), ref('gone')], [wt(ROOT, 'main'), stale]).map((r) => [r.ref.name, r.worktree?.path])).toEqual([
+      ['main', ROOT],
+      ['gone', undefined],
+    ]);
+  });
+
+  it('attaches no folder when the main entry is bare, and still leaves out created-worktree branches', () => {
+    const bareMain = { ...wt('/r.git', 'main'), bare: true };
+    expect(branchRows([ref('main'), ref('feature-x')], [bareMain, wt('/r/.wt/x', 'feature-x')]).map((r) => [r.ref.name, r.worktree?.path])).toEqual([
+      ['main', undefined],
+    ]);
+  });
+
+  it('treats every branch as not checked out when all worktrees are detached, and handles no branches or worktrees', () => {
     expect(branchRows([ref('a'), ref('b')], [wt('/r'), wt('/r/.wt/d')]).map((r) => r.worktree)).toEqual([undefined, undefined]);
     expect(branchRows([], worktrees)).toEqual([]);
+    expect(branchRows([ref('a')], []).map((r) => r.ref.name)).toEqual(['a']);
   });
 });
 

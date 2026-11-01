@@ -32,35 +32,38 @@ export type BranchLocation =
   | { readonly kind: 'otherWorktree'; readonly worktree: WorktreeEntry }
   | { readonly kind: 'notCheckedOut' };
 
-/** One row of the "Branches" group: a local branch, and the worktree it is checked out in, if any. */
+/** One row of the "Branches" group: a local branch, and the repo folder when it is checked out there. */
 export interface BranchRow {
   readonly ref: RefEntry;
-  /** Set when the branch is checked out: the row then stands for that folder (see `branchRows`). */
+  /** Set when the branch is checked out in the repo folder: the row then stands for that folder. */
   readonly worktree?: WorktreeEntry;
 }
 
 /**
- * Every local branch in its given order, like `git branch`: the "Branches" group. Developers look
- * for `main` among the branches, not among worktrees, even when it is checked out in the repo
- * folder. A checked-out branch carries its worktree, and its row stands for that folder (files on
- * disk, uncommitted edits included), the same as clicking that worktree, so a click on `main`
- * shows the work you have in progress on it.
- * @param worktrees - the repo's usable worktrees; a branch held by a stale one is a plain branch.
+ * The "Branches" group: every local branch that is not checked out in a created worktree, in the
+ * given order. Each branch appears in one place only: a branch checked out in a worktree someone
+ * created is listed under Worktrees (labelled with the branch), since that worktree is where it
+ * lives now. The repo folder's own branch (usually `main`) stays here, because developers look
+ * for it among the branches; its row stands for the repo folder (files on disk, uncommitted edits
+ * included), so a click on `main` shows the work in progress on it.
+ * @param worktrees - git's list in display order, main first, unfiltered: a branch held only by a
+ *   stale (prunable) worktree is a plain branch, and a bare main entry holds no branch.
  */
 export function branchRows(refs: readonly RefEntry[], worktrees: readonly WorktreeEntry[]): BranchRow[] {
-  const holders = new Map(worktrees.flatMap((w) => (w.branch === undefined ? [] : [[w.branch, w] as const])));
+  const linkedBranches = new Set(linkedWorktrees(worktrees).flatMap((w) => (w.branch === undefined ? [] : [w.branch])));
+  const main = worktrees[0];
+  const repoFolder = main !== undefined && !main.bare && !main.prunable ? main : undefined;
   return refs
-    .filter((ref) => ref.kind === 'local')
-    .map((ref) => {
-      const worktree = holders.get(ref.name);
-      return worktree === undefined ? { ref } : { ref, worktree };
-    });
+    // Skip branches checked out in a created worktree: the Worktrees group lists them.
+    .filter((ref) => ref.kind === 'local' && !linkedBranches.has(ref.name))
+    .map((ref) => (repoFolder !== undefined && repoFolder.branch === ref.name ? { ref, worktree: repoFolder } : { ref }));
 }
 
 /**
  * The "Worktrees" group: the worktrees someone created (`git worktree add`, Claude's
  * `.claude/worktrees/*`), i.e. every usable one except the main worktree. The main worktree is the
- * repo folder itself, already the repo row, and its branch is listed under Branches.
+ * repo folder itself, already the repo row, and its branch is listed under Branches. The branches
+ * these worktrees have checked out are listed here only (branchRows leaves them out).
  * @param worktrees - git's list in display order, main first (unfiltered, so a bare main entry
  *   is dropped rather than promoting a linked worktree to "main").
  */

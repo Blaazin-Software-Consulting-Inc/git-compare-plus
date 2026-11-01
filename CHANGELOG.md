@@ -35,11 +35,10 @@ Compare"). Settings, commands and views now use the `gitComparePlus.` prefix.
 
 ### Worktrees and branches
 
-- **Branches** lists every local branch, like `git branch`, saying where each checked-out one is
-  (`this window`, `repo folder`, `worktree .claude/worktrees/x`); clicking a checked-out branch
-  reviews the files in its folder, uncommitted edits included. **Worktrees** lists the worktrees
-  created from a branch; the repo folder is the repo row. Remote branches say where their local
-  copy is.
+- Each branch appears in one place. **Worktrees** lists the worktrees created from a branch,
+  named after their branch. **Branches** lists every other local branch, including the repo
+  folder's own branch (`main`, marked `repo folder`); clicking it reviews the files in the repo
+  folder, uncommitted edits included. Remote branches say where their local copy is.
 - Each sidebar section's header summarises what it shows (e.g. `feature-x against origin/main ·
   14 files` on Changes).
 - **Open…** on a branch says what it will do before doing it: open its worktree in a new window,
