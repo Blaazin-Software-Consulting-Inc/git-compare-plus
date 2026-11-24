@@ -91,8 +91,25 @@ describe('changed-file context menu (Changes view)', () => {
     expect(shown(command, 'commitsFile')).toBe(false);
   });
 
+  it('keeps every rule when the file is on disk (`.disk` suffix, after `.both`)', () => {
+    for (const suffix of ['.disk', '.both.disk']) {
+      const onDisk = (command: string) => statuses.filter((status) => shown(command, `changedFile.${status}${suffix}`));
+      expect(onDisk('gitComparePlus.openFile')).toEqual(['added', 'untracked', 'modified', 'renamed']);
+      expect(onDisk('gitComparePlus.openFileAtBase')).toEqual(['modified', 'renamed', 'deleted']);
+    }
+    expect(statuses.filter((status) => shown('gitComparePlus.openUncommittedChange', `changedFile.${status}.both.disk`))).toEqual([...statuses]);
+  });
+
+  it('Revert to Against is offered for every status, only on files on disk', () => {
+    expect(statuses.filter((status) => shown('gitComparePlus.revertToAgainst', `changedFile.${status}.disk`))).toEqual([...statuses]);
+    expect(statuses.filter((status) => shown('gitComparePlus.revertToAgainst', `changedFile.${status}.both.disk`))).toEqual([...statuses]);
+    expect(shownFor('gitComparePlus.revertToAgainst')).toEqual([]);
+    expect(statuses.filter((status) => shown('gitComparePlus.revertToAgainst', `changedFile.${status}.both`))).toEqual([]);
+    expect(shown('gitComparePlus.revertToAgainst', 'commitsFile')).toBe(false);
+  });
+
   it('neither appears on commits or Repositories items', () => {
-    for (const command of ['gitComparePlus.openFile', 'gitComparePlus.openFileAtBase']) {
+    for (const command of ['gitComparePlus.openFile', 'gitComparePlus.openFileAtBase', 'gitComparePlus.revertToAgainst']) {
       expect(shown(command, 'commit')).toBe(false);
       expect(Object.values(values).some((value) => shown(command, value))).toBe(false);
     }

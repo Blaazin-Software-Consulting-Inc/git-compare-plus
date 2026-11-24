@@ -78,6 +78,23 @@ exports.run = async function run() {
   assert.deepEqual(await openedSides('gitComparePlus.openUncommittedChange'), ['a2\n', 'a3\n'], 'uncommitted part: HEAD ↔ disk');
   process.stdout.write('host smoke: committed and uncommitted parts open with the right contents\n');
 
+  // Revert to Against puts the file on disk back to the left side. The modal dialog cannot be
+  // clicked here, so it is answered by swapping showWarningMessage for the call.
+  const realWarning = vscode.window.showWarningMessage;
+  const dialogs = [];
+  vscode.window.showWarningMessage = async (title, options, ...items) => {
+    dialogs.push({ title, modal: options?.modal === true });
+    return items.includes('Revert') ? 'Revert' : undefined;
+  };
+  try {
+    await vscode.commands.executeCommand('gitComparePlus.revertToAgainst', { kind: 'file', result, file });
+  } finally {
+    vscode.window.showWarningMessage = realWarning;
+  }
+  assert.deepEqual(dialogs, [{ title: 'Revert a.txt to base?', modal: true }], 'Revert to Against asks once, in a modal dialog');
+  assert.equal(fs.readFileSync(path.join(repoRoot, 'a.txt'), 'utf8'), 'a\n', 'a.txt is back to the Against version');
+  process.stdout.write('host smoke: Revert to Against restored the Against version\n');
+
   const registered = new Set(await vscode.commands.getCommands(true));
   const missing = manifest.contributes.commands.map((c) => c.command).filter((command) => !registered.has(command));
   assert.deepEqual(missing, [], `contributed commands not registered: ${missing.join(', ')}`);

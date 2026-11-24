@@ -525,3 +525,48 @@ describe('change origins against real git', () => {
     expect(uncommittedPart?.right).toEqual({ kind: 'file', absolutePath: path.join(root, 'both.txt') });
   });
 });
+
+describe('restoring files from a revision (Revert to Against)', () => {
+  it('overwrites and recreates files on disk from the revision, leaving the index and literal names alone', async () => {
+    const root = path.posix.join(sandbox, 'restore');
+    git(sandbox, 'init', '-q', '-b', 'main', root);
+    git(root, 'config', 'core.autocrlf', 'false');
+    // `[e]dit.txt` is a valid name on every OS and, read as a glob, would match edit.txt.
+    const globLike = '[e]dit.txt';
+    writeFileSync(path.join(root, 'edit.txt'), 'v1\n');
+    writeFileSync(path.join(root, 'gone.txt'), 'gone v1\n');
+    writeFileSync(path.join(root, globLike), 'glob v1\n');
+    git(root, 'add', '.');
+    git(root, 'commit', '-q', '-m', 'base');
+    const base = git(root, 'rev-parse', 'HEAD').trim();
+    writeFileSync(path.join(root, 'edit.txt'), 'v2\n');
+    writeFileSync(path.join(root, globLike), 'glob v2\n');
+    git(root, 'commit', '-q', '-am', 'later');
+    writeFileSync(path.join(root, 'edit.txt'), 'v3 uncommitted\n');
+    rmSync(path.join(root, 'gone.txt'));
+    const cli = new GitCli('git', recordingLogger());
+
+    await cli.restoreFromRevision(root, base, [globLike, 'gone.txt']);
+    expect(readFileSync(path.join(root, globLike), 'utf8')).toBe('glob v1\n');
+    expect(readFileSync(path.join(root, 'gone.txt'), 'utf8')).toBe('gone v1\n');
+    // Literal pathspec: `[e]dit.txt` named only itself, so edit.txt kept its uncommitted edit.
+    expect(readFileSync(path.join(root, 'edit.txt'), 'utf8')).toBe('v3 uncommitted\n');
+
+    await cli.restoreFromRevision(root, base, ['edit.txt']);
+    expect(readFileSync(path.join(root, 'edit.txt'), 'utf8')).toBe('v1\n');
+    // Worktree only: nothing is staged, so the revert shows as uncommitted edits.
+    expect(git(root, 'diff', '--cached', '--name-only')).toBe('');
+  });
+
+  it('fails without writing anything when a path is not in the revision', async () => {
+    const root = path.posix.join(sandbox, 'restore-missing');
+    git(sandbox, 'init', '-q', '-b', 'main', root);
+    writeFileSync(path.join(root, 'a.txt'), 'a1\n');
+    git(root, 'add', '.');
+    git(root, 'commit', '-q', '-m', 'base');
+    writeFileSync(path.join(root, 'a.txt'), 'a2\n');
+
+    await expect(new GitCli('git', recordingLogger()).restoreFromRevision(root, 'HEAD', ['a.txt', 'not-there.txt'])).rejects.toBeInstanceOf(GitCommandError);
+    expect(readFileSync(path.join(root, 'a.txt'), 'utf8')).toBe('a2\n');
+  });
+});

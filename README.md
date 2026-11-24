@@ -130,6 +130,17 @@ comparison includes uncommitted edits. **Open File at Base** opens the base vers
 Each is hidden when that side doesn't exist (a new or deleted file). Open File is also a button
 on the row.
 
+**Undoing a change:** in the diff of a file on disk, hover between the two sides and click the
+arrow (VS Code's **Revert Block**) to put that one block back to the left side. To put whole files
+back, right-click them (several at once with a multi-selection) → **Revert to Against…**. A
+modified or deleted file gets the left side's version; a new file, or the new name of a renamed
+one, goes to the Trash. The left side is the Against side, or its branch point when Changes shows
+"changes since branch point", and the dialog names which. It also lists every file whose
+uncommitted edits would be lost, the only thing git can't bring back. Nothing is committed: the
+reverted files show as uncommitted edits. Both are offered only when reviewing a worktree with
+its uncommitted edits, since a branch has no files on disk to change. Save or discard unsaved
+edits in those files first.
+
 The title bar has **Open All Changes** (every file in one scrolling diff), **Refresh Comparison**
 (re-run now; normally this happens automatically), **Fetch and Refresh**, **View as Tree / View as
 List** and **Clear**. In tree view, files are grouped into folders with their own totals, and a

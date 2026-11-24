@@ -11,6 +11,7 @@
  *     uncommitted edits, Against, mode with its branch point), each clickable to change it; then
  *     the changed files. Clicking a file opens the diff; "Open All Changes" opens every file in
  *     one multi-file diff. A picked worktree or branch starts in "all differences" (againstMode.ts).
+ *     "Revert to Against…" puts selected files on disk back to the left side (revertCommand.ts).
  *   - Commits and History (commits/, history/).
  *
  * Also contributes "Compare All Repos With Default Branch" (every repo's main worktree at once).
@@ -53,6 +54,7 @@ import { createChannelLogger, type Logger } from './logger';
 import { formatAge, isFetchStale, selectionTargets } from './operations';
 import { parseDefaultBranchSettings } from './defaultBranch';
 import { discoverRepos, getGitApi, type GitApi } from './repoDiscovery';
+import { revertToAgainst } from './revertCommand';
 import { ReviewStore } from './review/reviewStore';
 import { groupReviewToggles } from './review/reviewToggles';
 import type { BaseFetchInfo, ComparisonSetup } from './views/changesHeader';
@@ -256,6 +258,11 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
     register('gitComparePlus.changeDefaultBase', (node?: RepoTreeNode) => commands.changeDefaultBase(node), logger),
     register('gitComparePlus.openFile', (node: ChangesNode) => commands.openFileSide(node, 'right'), logger),
     register('gitComparePlus.openFileAtBase', (node: ChangesNode) => commands.openFileSide(node, 'left'), logger),
+    register(
+      'gitComparePlus.revertToAgainst',
+      (node?: ChangesNode, selection?: ChangesNode[]) => revertToAgainst({ getGit, rerun: () => commands.rerun(), logger }, node, selection),
+      logger,
+    ),
     vscode.workspace.onDidChangeConfiguration((event) => {
       // The default branch drives ordering, ahead/behind and the one-click compare: reload.
       if (event.affectsConfiguration('gitComparePlus.remote') || event.affectsConfiguration('gitComparePlus.defaultBranches')) {

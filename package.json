@@ -236,6 +236,11 @@
         "category": "Git Compare+"
       },
       {
+        "command": "gitComparePlus.revertToAgainst",
+        "title": "Revert to Against…",
+        "category": "Git Compare+"
+      },
+      {
         "command": "gitComparePlus.openCommit",
         "title": "Open Commit",
         "category": "Git Compare+"
@@ -676,13 +681,18 @@
         },
         {
           "command": "gitComparePlus.openCommittedChange",
-          "when": "view == gitComparePlus.changes && viewItem =~ /^changedFile\\.[a-z]+\\.both$/",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^changedFile\\.[a-z]+\\.both(\\.|$)/",
           "group": "0_open@2"
         },
         {
           "command": "gitComparePlus.openUncommittedChange",
-          "when": "view == gitComparePlus.changes && viewItem =~ /^changedFile\\.[a-z]+\\.both$/",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^changedFile\\.[a-z]+\\.both(\\.|$)/",
           "group": "0_open@3"
+        },
+        {
+          "command": "gitComparePlus.revertToAgainst",
+          "when": "view == gitComparePlus.changes && viewItem =~ /^changedFile\\..*\\.disk$/",
+          "group": "8_revert@1"
         },
         {
           "command": "gitComparePlus.openCommit",
@@ -968,6 +978,10 @@
         },
         {
           "command": "gitComparePlus.openFileAtBase",
+          "when": "false"
+        },
+        {
+          "command": "gitComparePlus.revertToAgainst",
           "when": "false"
         },
         {

@@ -78,9 +78,9 @@ const MAX_UNTRACKED_STATS_BYTES = 2 * 1024 * 1024;
 // Files read at once (line stats, content hashes); bounded so a worktree with thousands of new
 // files cannot hit EMFILE.
 const FILE_READ_CONCURRENCY = 16;
-// Paths per `git ls-tree` call: keeps the argument list well under the OS limit (~256 KB on macOS,
-// 32 KB on Windows) for deep paths.
-const LS_TREE_PATHS_PER_CALL = 200;
+// Paths per `git ls-tree` or `git restore` call: keeps the argument list well under the OS limit
+// (~256 KB on macOS, 32 KB on Windows) for deep paths.
+const PATHS_PER_CALL = 200;
 
 /** A git command exited non-zero or could not be started. */
 export class GitCommandError extends Error {
@@ -261,8 +261,8 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
    */
   async blobIds(cwd: string, revision: string, paths: readonly string[]): Promise<Map<string, string>> {
     const ids = new Map<string, string>();
-    for (let start = 0; start < paths.length; start += LS_TREE_PATHS_PER_CALL) {
-      const chunk = paths.slice(start, start + LS_TREE_PATHS_PER_CALL);
+    for (let start = 0; start < paths.length; start += PATHS_PER_CALL) {
+      const chunk = paths.slice(start, start + PATHS_PER_CALL);
       const output = await this.run(cwd, ['ls-tree', '-r', '-z', revision, '--', ...chunk], { env: { GIT_LITERAL_PATHSPECS: '1' } });
       for (const [filePath, id] of parseLsTreeZ(output)) {
         ids.set(filePath, id);
@@ -419,6 +419,21 @@ export class GitCli implements ComparisonPort, AheadBehindPort {
    */
   async stashPush(root: string, message: string | undefined, includeUntracked: boolean): Promise<void> {
     await this.run(root, ['stash', 'push', ...(includeUntracked ? ['--include-untracked'] : []), ...(message !== undefined && message.length > 0 ? ['-m', message] : [])]);
+  }
+
+  /**
+   * Overwrite files on disk with their content at `revision` (`git restore --source --worktree`),
+   * leaving the index alone: the files then show as uncommitted edits back to that version. Git
+   * applies the repo's checkout filters (line endings, LFS) and file modes, which writing the blob
+   * ourselves would not. Pathspecs are literal (`GIT_LITERAL_PATHSPECS`).
+   * Every path must exist at `revision`: git fails on the whole call otherwise (nothing written).
+   * @param root - worktree root; paths are repo-relative, as git diff prints them.
+   */
+  async restoreFromRevision(root: string, revision: string, paths: readonly string[]): Promise<void> {
+    for (let start = 0; start < paths.length; start += PATHS_PER_CALL) {
+      const chunk = paths.slice(start, start + PATHS_PER_CALL);
+      await this.run(root, ['restore', `--source=${revision}`, '--worktree', '--', ...chunk], { env: { GIT_LITERAL_PATHSPECS: '1' } });
+    }
   }
 
   /**

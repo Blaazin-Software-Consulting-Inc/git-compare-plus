@@ -2,6 +2,17 @@
 
 All notable changes to Git Compare+. Versions before 1.0.0 were internal and not published.
 
+## 1.0.1 (unreleased)
+
+### Changes view
+
+- **Revert to Against…** on files in Changes (right-click; works on a multi-selection): puts
+  each file on disk back to the left side of its diff. Modified and deleted files get the left
+  side's version, added and untracked files (and a rename's new name) go to the Trash. A modal
+  dialog names the version (the Against side or its branch point), every file, and every
+  uncommitted edit that would be lost. Offered when reviewing a worktree with its uncommitted
+  edits; refused while a target has unsaved edits in an editor.
+
 ## 1.0.0 (2026-11-02)
 
 First public release, as **Git Compare+** (previously developed as "Git Branch & Worktree

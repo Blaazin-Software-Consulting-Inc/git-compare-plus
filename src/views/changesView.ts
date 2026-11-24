@@ -32,6 +32,7 @@ import * as vscode from 'vscode';
 import { originMark, originTooltip, uncommittedFileCount } from '../changeOrigin';
 import { hasBothOrigins, totalLineStats, type ComparisonResult } from '../comparison';
 import type { ChangedFile, CommitEntry, FileStatus } from '../git/parsers';
+import { revertUnavailableReason } from '../revertToAgainst';
 import { commitCountText, commitDescription, commitTitle, commitTooltip } from './commitText';
 import { describeHeader, sidesSummary, type BaseFetchInfo, type ComparisonSetup, type HeaderRow } from './changesHeader';
 import { diffBarIconPath, diffBarShape, lineStatsHoverHtml } from './diffBar';
@@ -391,9 +392,10 @@ function fileItem(result: ComparisonResult, file: ChangedFile, reviewed: boolean
     item.iconPath = icon;
   }
   item.tooltip = fileTooltip(file);
-  // `changedFile.<status>[.both]`: Open File is hidden for deletions, Open File at Base for
-  // additions; `.both` (committed + uncommitted) offers Open Committed / Uncommitted Changes.
-  item.contextValue = `changedFile.${file.status}${hasBothOrigins(file) ? '.both' : ''}`;
+  // `changedFile.<status>[.both][.disk]`: Open File is hidden for deletions, Open File at Base
+  // for additions; `.both` (committed + uncommitted) offers Open Committed / Uncommitted Changes;
+  // `.disk` (the right side is the file on disk) offers Revert to Against.
+  item.contextValue = `changedFile.${file.status}${hasBothOrigins(file) ? '.both' : ''}${revertUnavailableReason(result) === undefined ? '.disk' : ''}`;
   item.command = { command: 'gitComparePlus.openChange', title: 'Open Change', arguments: [{ kind: 'file', result, file }] };
   return item;
 }
