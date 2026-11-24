@@ -92,7 +92,10 @@ exports.run = async function run() {
     vscode.window.showWarningMessage = realWarning;
   }
   assert.deepEqual(dialogs, [{ title: 'Revert a.txt to base?', modal: true }], 'Revert to Against asks once, in a modal dialog');
-  assert.equal(fs.readFileSync(path.join(repoRoot, 'a.txt'), 'utf8'), 'a\n', 'a.txt is back to the Against version');
+  // git restore applies the repo's checkout filters, so with core.autocrlf=true (GitHub's Windows
+  // runners) the file comes back as `a\r\n`: the same content, in the line endings git chose.
+  const reverted = fs.readFileSync(path.join(repoRoot, 'a.txt'), 'utf8');
+  assert.equal(reverted.replace(/\r\n/g, '\n'), 'a\n', `a.txt is back to the Against version; it reads ${JSON.stringify(reverted)}`);
   process.stdout.write('host smoke: Revert to Against restored the Against version\n');
 
   const registered = new Set(await vscode.commands.getCommands(true));
